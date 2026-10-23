@@ -4,7 +4,7 @@
 query 统一走 embed_query（instruction 模型自动加前缀）。
 
 用法（脚本/服务内）：
-    from knowhow.core.search import hybrid_search
+    from src.core.search import hybrid_search
     with psycopg.connect(DSN) as conn:
         hits = hybrid_search(conn, "MOQ是多少", k=5)
 """
@@ -17,7 +17,7 @@ from pathlib import Path
 import psycopg
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
-from knowhow.providers.embedding_provider import get_embedding_provider
+from src.providers.embedding_provider import get_embedding_provider
 
 
 def embed_query(text: str, backend: str | None = None) -> list[float]:

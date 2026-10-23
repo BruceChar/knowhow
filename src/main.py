@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import psycopg, uuid
-from knowhow.core import search, generate, gate
+from src.core import search, generate, gate
 
 app = FastAPI(title="外贸知识服务", version="0.1.0")
 DSN = "postgresql://rag:rag_dev_2026@localhost:5433/rag"

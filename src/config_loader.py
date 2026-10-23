@@ -11,7 +11,7 @@ from typing import Any
 
 import yaml
 
-CONFIG_DIR = Path(__file__).resolve().parent.parent.parent / "config" / "mappings"
+CONFIG_DIR = Path(__file__).resolve().parent.parent / "config" / "mappings"
 
 
 def load_mapping_from_yaml(config_key: str) -> dict[str, Any]:

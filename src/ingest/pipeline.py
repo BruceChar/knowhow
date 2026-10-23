@@ -21,19 +21,19 @@ def run(path: str, kind: str, config: str | None = None,
 
     kind = kind or ("faq" if p.suffix.lower() == ".json" else "facts")
     if kind == "faq":
-        from knowhow.ingest.faq import load_faq
+        from src.ingest.faq import load_faq
         with open(p, encoding="utf-8") as f:
             data = json.load(f)
         return load_faq(data, dsn or "postgresql://rag:rag_dev_2026@localhost:5433/rag",
                         str(p), backend)
     if kind == "facts":
-        from knowhow.ingest.facts import load, read_sheets
-        from knowhow.config_loader import get_mapping
+        from src.ingest.facts import load, read_sheets
+        from src.config_loader import get_mapping
         dsn = dsn or "postgresql://rag:rag_dev_2026@localhost:5433/rag"
         cfg = get_mapping(config or "jiacong_facts", dsn)
         rows = []
         for sheet, df in read_sheets(str(p), cfg):
-            from knowhow.ingest.facts import map_row
+            from src.ingest.facts import map_row
             for idx, r in df.iterrows():
                 rows.append(map_row(r.to_dict(), cfg, sheet, idx))
         return load(rows, dsn, cfg, str(p), "facts")

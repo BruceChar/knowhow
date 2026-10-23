@@ -18,8 +18,8 @@ from pathlib import Path
 import psycopg
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
-from knowhow.providers.embedding_provider import get_embedding_provider
-from knowhow.providers.vector_store_provider import get_vector_store
+from src.providers.embedding_provider import get_embedding_provider
+from src.providers.vector_store_provider import get_vector_store
 
 DEFAULT_DSN = "postgresql://rag:rag_dev_2026@localhost:5433/rag"
 GATE_RECALL = 0.6       # 检索层：Recall@5 ≥ 0.6

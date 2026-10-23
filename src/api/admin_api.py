@@ -18,7 +18,7 @@ import psycopg
 from fastapi import Depends, FastAPI, HTTPException, Query
 from pydantic import BaseModel
 
-from knowhow.auth.rbac import User, data_permission_clause, get_current_user, require_role
+from src.auth.rbac import User, data_permission_clause, get_current_user, require_role
 
 DSN = os.environ.get("RAG_DSN", "postgresql://rag:rag_dev_2026@localhost:5433/rag")
 app = FastAPI(title="企业知识库管理台", version="0.1")

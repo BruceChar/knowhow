@@ -14,7 +14,7 @@ import psycopg
 from pgvector.psycopg import register_vector
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
-from knowhow.providers.embedding_provider import get_embedding_provider
+from src.providers.embedding_provider import get_embedding_provider
 
 DEFAULT_DSN = "postgresql://rag:rag_dev_2026@localhost:5433/rag"
 

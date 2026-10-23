@@ -12,7 +12,7 @@ import pandas as pd
 import psycopg
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))  # 项目根入路径
-from knowhow.config_loader import get_mapping
+from src.config_loader import get_mapping
 
 DEFAULT_DSN = "postgresql://rag:rag_dev_2026@localhost:5433/rag"
 

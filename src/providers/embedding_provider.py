@@ -40,7 +40,7 @@ def _cache_dir() -> str | None:
     env = os.environ.get("HF_HUB_CACHE")
     if env:
         return env
-    proj = Path(__file__).resolve().parent.parent.parent.parent / "data" / "models"
+    proj = Path(__file__).resolve().parent.parent.parent / "data" / "models"
     if proj.is_dir():
         return str(proj)
     return None
