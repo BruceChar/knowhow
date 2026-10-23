@@ -88,3 +88,20 @@ CREATE TABLE IF NOT EXISTS eval_report (
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_eval_report_created ON eval_report (created_at DESC);
+
+-- ============ 账户登录：users + sessions ============
+CREATE TABLE IF NOT EXISTS users (
+    id            TEXT PRIMARY KEY,
+    name          TEXT NOT NULL,
+    role          TEXT NOT NULL CHECK (role IN ('agent','editor','reviewer','admin')),
+    password_hash TEXT NOT NULL,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS sessions (
+    token       TEXT PRIMARY KEY,
+    user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expires_at  TIMESTAMPTZ NOT NULL,
+    last_seen   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions (user_id);

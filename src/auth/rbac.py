@@ -87,7 +87,17 @@ def update_user_role(uid: str, role: str) -> User:
 
 
 def get_current_user(request: Request) -> User:
-    """从请求解析当前用户。开发环境用 X-User-Id 头；生产接 JWT。"""
+    """解析当前用户，优先级：
+    1) Authorization: Bearer <token> —— 真实登录会话（sessions 表）
+    2) X-User-Id —— 开发/联调兼容（演示切换身份；生产应移除）
+    """
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        from src.auth import auth as _auth
+        info = _auth.get_session_user(auth[7:].strip())
+        if info is None:
+            raise HTTPException(status_code=401, detail="会话无效或已过期，请重新登录")
+        return User(info["id"], info["name"], info["role"])
     uid = request.headers.get("X-User-Id", "u_agent")
     user = USERS.get(uid)
     if user is None:

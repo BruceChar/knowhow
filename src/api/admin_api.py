@@ -15,7 +15,7 @@ from __future__ import annotations
 import os
 
 import psycopg
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -43,6 +43,12 @@ _embedding_provider = None
 @app.on_event("startup")
 def _warmup():
     global _embedding_provider
+    # 种子用户（幂等；演示默认密码，生产必须修改）
+    try:
+        from src.auth import auth as _auth
+        _auth.seed_users(DSN)
+    except Exception as e:
+        print(f"[startup] 种子用户失败: {e}")
     try:
         from src.providers.embedding_provider import get_embedding_provider
         _embedding_provider = get_embedding_provider()
@@ -212,6 +218,41 @@ def list_batches(user: User = Depends(require_role("reviewer"))):
     cols = ["id", "source_file", "source_kind", "total_rows", "loaded_rows",
             "pending_rows", "bad_rows", "status", "started_at", "finished_at"]
     return [dict(zip(cols, r)) for r in rows]
+
+
+# ============ 账户登录认证 ============
+
+class LoginBody(BaseModel):
+    username: str
+    password: str
+
+
+@app.post("/auth/login")
+def login(body: LoginBody):
+    """账号密码登录 → 返回会话 token（Bearer 使用）。"""
+    from src.auth import auth as _auth
+    info = _auth.authenticate(body.username, body.password, DSN)
+    if info is None:
+        raise HTTPException(401, "用户名或密码错误")
+    return {"ok": True, "token": info["token"],
+            "user": {"id": info["id"], "name": info["name"], "role": info["role"]}}
+
+
+@app.post("/auth/logout")
+def logout(request: Request, user: User = Depends(get_current_user)):
+    """登出：销毁当前会话 token。"""
+    from src.auth import auth as _auth
+    auth_header = request.headers.get("Authorization", "")
+    token = auth_header[7:].strip() if auth_header.startswith("Bearer ") else ""
+    if token:
+        _auth.delete_session(token, DSN)
+    return {"ok": True}
+
+
+@app.get("/auth/me")
+def me(user: User = Depends(get_current_user)):
+    """当前登录用户信息（前端鉴权初始化用）。"""
+    return {"id": user.id, "name": user.name, "role": user.role}
 
 
 @app.get("/health")

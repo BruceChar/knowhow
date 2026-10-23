@@ -100,7 +100,7 @@
 </style>
 </head>
 <body>
-<div class="layout">
+<div class="layout" id="app-view">
   <!-- ===== 左侧系统菜单 ===== -->
   <aside class="sidebar" id="sidebar">
     <div class="logo">
@@ -142,13 +142,8 @@
       <div class="breadcrumb">企业知识库 / <b id="page-title">数据入录</b></div>
       <div class="spacer"></div>
       <div class="user-box">
-        <span id="cur-user" class="tag tag-blue" style="font-weight:600;">u_reviewer · 审核员</span>
-        <select class="select" id="sel-user" onchange="switchUser(this.value)" style="font-size:12px;">
-          <option value="u_admin">u_admin · 管理员</option>
-          <option value="u_reviewer" selected>u_reviewer · 审核员</option>
-          <option value="u_editor">u_editor · 业务员</option>
-          <option value="u_agent">u_agent · 客服</option>
-        </select>
+        <span id="cur-user" class="tag tag-blue" style="font-weight:600;">未登录</span>
+        <button class="btn btn-sm" onclick="logout()" style="margin-left:8px;">登出</button>
       </div>
     </header>
 
@@ -282,10 +277,35 @@
   </div>
 </div>
 
+<!-- ===== 登录视图（未认证时显示） ===== -->
+<div id="login-view" style="display:none; position:fixed; inset:0; z-index:99; background:#0f172a; align-items:center; justify-content:center;">
+  <div style="width:min(92vw,360px); background:#fff; border-radius:14px; padding:32px 28px; box-shadow:0 20px 60px rgba(0,0,0,.35);">
+    <div style="display:flex; align-items:center; gap:10px; margin-bottom:6px;">
+      <div style="width:38px;height:38px;border-radius:10px;background:#2563eb;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:18px;">K</div>
+      <div>
+        <div style="font-weight:700;font-size:16px;color:#0f172a;">企业知识库 · 管理后台</div>
+        <div style="font-size:12px;color:#64748b;">KNOWHOW 登录</div>
+      </div>
+    </div>
+    <div id="login-err" style="display:none;background:#fef2f2;color:#dc2626;font-size:13px;padding:8px 10px;border-radius:6px;margin:12px 0;"></div>
+    <form id="login-form" style="margin-top:14px;" onsubmit="return doLogin(event)">
+      <label style="display:block;font-size:12px;color:#475569;margin-bottom:4px;">账号（用户 ID）</label>
+      <input id="login-user" class="select" style="width:100%;padding:9px 10px;font-size:16px;" placeholder="u_admin" autocomplete="username">
+      <label style="display:block;font-size:12px;color:#475569;margin:12px 0 4px;">密码</label>
+      <input id="login-pass" type="password" class="select" style="width:100%;padding:9px 10px;font-size:16px;" placeholder="••••••••" autocomplete="current-password">
+      <button class="btn" style="width:100%;margin-top:18px;padding:10px;" type="submit">登 录</button>
+    </form>
+    <div style="margin-top:16px;font-size:12px;color:#94a3b8;border-top:1px solid #f1f5f9;padding-top:12px;line-height:1.8;">
+      演示账号：u_admin / admin123（管理员）<br>u_reviewer / reviewer123（审核员）<br>u_editor / editor123（业务员）· u_agent / agent123（客服）
+    </div>
+  </div>
+</div>
+
 <script>
 const API = '';  // 同源部署；跨域时改为后端地址如 http://localhost:8000
 let currentReport = null;
-let CURRENT_USER = 'u_reviewer';
+let CURRENT_USER = 'u_agent';
+let CURRENT_ROLE = 'agent';
 
 const ROLE_LABEL = {agent:'客服', editor:'业务员', reviewer:'审核员', admin:'管理员'};
 const ROLE_SCOPE = {
@@ -302,6 +322,74 @@ const STATUS_LABEL = {draft:'待审核', approved:'已通过', deprecated:'已�
 
 function esc(s){ return (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
+// ============ 登录 / 鉴权 ============
+const TOKEN_KEY = 'kh_token';
+
+function showLogin(){
+  document.getElementById('app-view').style.display = 'none';
+  const lv = document.getElementById('login-view');
+  lv.style.display = 'flex';
+  document.getElementById('login-err').style.display = 'none';
+}
+function showApp(){
+  document.getElementById('login-view').style.display = 'none';
+  document.getElementById('app-view').style.display = 'flex';
+  document.getElementById('cur-user').textContent = CURRENT_USER + ' · ' + (ROLE_LABEL[CURRENT_ROLE]||CURRENT_ROLE);
+}
+function initApp(){ showPage('ingest'); loadBatches(); loadMapping(); initEvalViews(); loadUsers(); }
+
+async function doLogin(ev){
+  ev.preventDefault();
+  const user = document.getElementById('login-user').value.trim();
+  const pass = document.getElementById('login-pass').value;
+  const errBox = document.getElementById('login-err');
+  errBox.style.display = 'none';
+  if(!user || !pass){ errBox.textContent = '请输入账号和密码'; errBox.style.display='block'; return false; }
+  try {
+    const r = await fetch(API + '/auth/login', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({username:user, password:pass})
+    });
+    const j = await r.json().catch(()=>({}));
+    if(!r.ok){ errBox.textContent = j.detail || ('HTTP ' + r.status); errBox.style.display='block'; return false; }
+    localStorage.setItem(TOKEN_KEY, j.token);
+    CURRENT_USER = j.user.id; CURRENT_ROLE = j.user.role;
+    showApp();
+    initApp();
+    return false;
+  } catch(e){ errBox.textContent = '网络错误：' + e.message; errBox.style.display='block'; return false; }
+}
+
+async function logout(){
+  try { await fetch(API + '/auth/logout', {method:'POST', headers: authHeaders()}); } catch(e){}
+  localStorage.removeItem(TOKEN_KEY);
+  CURRENT_USER = 'u_agent'; CURRENT_ROLE = 'agent';
+  showLogin();
+}
+
+function authHeaders(){
+  const t = localStorage.getItem(TOKEN_KEY);
+  return t ? {'Content-Type':'application/json', 'Authorization':'Bearer ' + t}
+           : {'Content-Type':'application/json', 'X-User-Id': CURRENT_USER};
+}
+
+async function boot(){
+  const token = localStorage.getItem(TOKEN_KEY);
+  if(!token){ showLogin(); return; }
+  try {
+    const me = await fetch(API + '/auth/me', {headers: {'Authorization':'Bearer ' + token}});
+    if(!me.ok) throw new Error('invalid');
+    const u = await me.json();
+    CURRENT_USER = u.id; CURRENT_ROLE = u.role;
+    showApp();
+    initApp();
+  } catch(e){  // token 失效/过期 → 回登录
+    localStorage.removeItem(TOKEN_KEY);
+    showLogin();
+  }
+}
+function initApp(){ loadBatches(); loadMapping(); initEvalViews(); loadUsers(); }
+
 function showPage(name){
   document.querySelectorAll('.menu-item').forEach(m=>m.classList.toggle('active', m.dataset.page===name));
   document.querySelectorAll('.page').forEach(p=>p.classList.toggle('active', p.id==='page-'+name));
@@ -314,18 +402,16 @@ function showPage(name){
   if(name==='trend' || name==='audit' || name==='redline' || name==='qa') initEvalViews();
 }
 
-function switchUser(uid){
-  CURRENT_USER = uid;
-  document.getElementById('cur-user').textContent = uid + ' · ' + (ROLE_LABEL[uid.replace('u_','')]||uid);
-  showMsg('已切换为 ' + uid + '（' + (ROLE_LABEL[uid.replace('u_','')]||'') + '）', true);
-  loadBatches(); loadUsers(); loadMapping(); loadFaqs();
-}
-
 async function api(path, opts={}){
   const r = await fetch(API + path, {
-    headers: {'Content-Type':'application/json', 'X-User-Id': CURRENT_USER},
+    headers: authHeaders(),
     ...opts
   });
+  if(r.status === 401){  // 会话失效 → 回登录
+    localStorage.removeItem(TOKEN_KEY);
+    showLogin();
+    throw new Error('登录已过期，请重新登录');
+  }
   if(!r.ok){
     let detail = 'HTTP ' + r.status;
     try { const j = await r.json(); detail = j.detail || detail; } catch(e){}
@@ -526,7 +612,9 @@ async function uploadAndRun(){
   try {
     const fd = new FormData();
     fd.append('file', file);
-    const r = await fetch(API + '/upload', {method:'POST', headers:{'X-User-Id':CURRENT_USER}, body:fd});
+    const ah = authHeaders();
+    delete ah['Content-Type'];  // FormData 自动设置 boundary
+    const r = await fetch(API + '/upload', {method:'POST', headers:ah, body:fd});
     if(!r.ok){ const j = await r.json().catch(()=>({})); throw new Error(j.detail||('HTTP '+r.status)); }
     const up = await r.json();
     document.getElementById('ingest-status').textContent = `已上传 ${up.filename}（${(up.size/1024).toFixed(0)}KB）→ 执行入录…`;
@@ -694,9 +782,8 @@ function closeModal(){
   if(m) m.remove();
 }
 
-// ============ 启动 ============
-showPage('ingest');
-initEvalViews();
+// ============ 启动：先鉴权，未登录显示登录页 ============
+boot();
 </script>
 </body>
 </html>
