@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- knowhow 管理后台常驻服务（macOS launchd）
+     安装：cp scripts/com.knowhow.server.plist ~/Library/LaunchAgents/ && launchctl load ~/Library/LaunchAgents/com.knowhow.server.plist
+     管理：launchctl start/stop/kickstart gui/$(id -u)/com.knowhow.server
+     日志：/tmp/knowhow.out.log /tmp/knowhow.err.log（可按需改到持久目录）
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.knowhow.server</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/bruce/python/knowhow/.venv/bin/uv</string>
+        <string>run</string>
+        <string>uvicorn</string>
+        <string>src.api.admin_api:app</string>
+        <string>--host</string>
+        <string>0.0.0.0</string>
+        <string>--port</string>
+        <string>8000</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/bruce/python/knowhow</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>HF_HUB_OFFLINE</key><string>1</string>
+        <key>PYTHONUNBUFFERED</key><string>1</string>
+    </dict>
+
+    <!-- 崩溃自动重启 -->
+    <key>KeepAlive</key>
+    <true/>
+
+    <!-- 开机自启 -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/knowhow.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/knowhow.err.log</string>
+</dict>
+</plist>

@@ -7,13 +7,14 @@ filters 支持 {"status": "approved"} 等精确过滤（数据级权限）。
 """
 from __future__ import annotations
 
-import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
 
 import psycopg
 from pgvector.psycopg import register_vector
+
+from src.config import RAG_DSN
 
 
 @dataclass
@@ -37,8 +38,7 @@ class PgVectorStoreProvider(VectorStoreProvider):
     name = "pgvector"
 
     def __init__(self, dsn: str | None = None):
-        self.dsn = dsn or os.environ.get(
-            "DATABASE_URL", "postgresql://rag:rag_dev_2026@localhost:5433/rag")
+        self.dsn = dsn or RAG_DSN
         self.collection = "faq"  # 默认集合；上层可覆盖（如 "knowledge_card"）
 
     def _conn(self):

@@ -322,8 +322,9 @@ const STATUS_LABEL = {draft:'待审核', approved:'已通过', deprecated:'已�
 
 function esc(s){ return (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
-// ============ 登录 / 鉴权 ============
-const TOKEN_KEY = 'kh_token';
+// ============ 登录 / 鉴权（httpOnly Cookie 会话） ============
+// 会话 Cookie 由服务端 Set-Cookie 下发（HttpOnly+SameSite=Lax），
+// 前端不接触 token，同源 fetch 自动携带。
 
 function showLogin(){
   document.getElementById('app-view').style.display = 'none';
@@ -352,43 +353,65 @@ async function doLogin(ev){
     });
     const j = await r.json().catch(()=>({}));
     if(!r.ok){ errBox.textContent = j.detail || ('HTTP ' + r.status); errBox.style.display='block'; return false; }
-    localStorage.setItem(TOKEN_KEY, j.token);
     CURRENT_USER = j.user.id; CURRENT_ROLE = j.user.role;
     showApp();
-    initApp();
+    if(j.must_change){ showForcePassword(); }
+    else { initApp(); }
     return false;
   } catch(e){ errBox.textContent = '网络错误：' + e.message; errBox.style.display='block'; return false; }
 }
 
 async function logout(){
-  try { await fetch(API + '/auth/logout', {method:'POST', headers: authHeaders()}); } catch(e){}
-  localStorage.removeItem(TOKEN_KEY);
+  try { await fetch(API + '/auth/logout', {method:'POST'}); } catch(e){}
   CURRENT_USER = 'u_agent'; CURRENT_ROLE = 'agent';
   showLogin();
 }
 
+// 强制改密模态（首次登录 / 管理员重置密码后）
+function showForcePassword(){
+  openModal('修改密码', `
+    <p style="font-size:13px;color:var(--bad);margin-bottom:10px;">首次登录或密码已被重置，必须修改密码后才能继续使用。</p>
+    <label style="display:block;font-size:12px;color:var(--muted);">当前密码</label>
+    <input id="fp-old" type="password" class="select" style="width:100%;margin-bottom:10px;">
+    <label style="display:block;font-size:12px;color:var(--muted);">新密码（至少 8 位）</label>
+    <input id="fp-new" type="password" class="select" style="width:100%;margin-bottom:10px;">
+    <label style="display:block;font-size:12px;color:var(--muted);">确认新密码</label>
+    <input id="fp-new2" type="password" class="select" style="width:100%;">
+    <div id="fp-err" style="display:none;color:var(--bad);font-size:12px;margin-top:8px;"></div>
+    <div style="margin-top:14px;text-align:right;">
+      <button class="btn" onclick="submitForcePassword()">保存并进入</button>
+    </div>`);
+}
+async function submitForcePassword(){
+  const oldp = document.getElementById('fp-old').value;
+  const np = document.getElementById('fp-new').value;
+  const np2 = document.getElementById('fp-new2').value;
+  const errBox = document.getElementById('fp-err');
+  if(np.length < 8){ errBox.textContent='新密码至少 8 位'; errBox.style.display='block'; return; }
+  if(np !== np2){ errBox.textContent='两次输入的新密码不一致'; errBox.style.display='block'; return; }
+  try {
+    await api('/auth/password', {method:'POST', body: JSON.stringify({old_password:oldp, new_password:np})});
+    closeModal(); initApp();
+    showMsg('密码已修改', true);
+  } catch(e){ errBox.textContent = e.message; errBox.style.display='block'; }
+}
+
 function authHeaders(){
-  const t = localStorage.getItem(TOKEN_KEY);
-  return t ? {'Content-Type':'application/json', 'Authorization':'Bearer ' + t}
-           : {'Content-Type':'application/json', 'X-User-Id': CURRENT_USER};
+  return {'Content-Type':'application/json'};  // 会话 Cookie 自动携带
 }
 
 async function boot(){
-  const token = localStorage.getItem(TOKEN_KEY);
-  if(!token){ showLogin(); return; }
+  // 同源请求自动携带 Cookie；无会话时 /auth/me 返回 401 → 登录页
   try {
-    const me = await fetch(API + '/auth/me', {headers: {'Authorization':'Bearer ' + token}});
+    const me = await fetch(API + '/auth/me');
     if(!me.ok) throw new Error('invalid');
     const u = await me.json();
     CURRENT_USER = u.id; CURRENT_ROLE = u.role;
-    showApp();
-    initApp();
-  } catch(e){  // token 失效/过期 → 回登录
-    localStorage.removeItem(TOKEN_KEY);
+    showApp(); initApp();
+  } catch(e){
     showLogin();
   }
 }
-function initApp(){ loadBatches(); loadMapping(); initEvalViews(); loadUsers(); }
 
 function showPage(name){
   document.querySelectorAll('.menu-item').forEach(m=>m.classList.toggle('active', m.dataset.page===name));
@@ -408,7 +431,6 @@ async function api(path, opts={}){
     ...opts
   });
   if(r.status === 401){  // 会话失效 → 回登录
-    localStorage.removeItem(TOKEN_KEY);
     showLogin();
     throw new Error('登录已过期，请重新登录');
   }

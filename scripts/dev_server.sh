@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
 # knowhow 管理后台局域网启动脚本
-# 用法：scripts/dev_server.sh [端口]   （默认 8000）
-# 说明：绑定 0.0.0.0 使局域网内其他设备可访问；打印局域网 IP 访问地址。
+# 用法：scripts/dev_server.sh [端口]   （默认 8000，可被 .env 的 APP_PORT 覆盖）
+# 说明：自动加载 .env（如存在），绑定 0.0.0.0 使局域网内其他设备可访问。
 set -e
-PORT="${1:-8000}"
+
+# 加载 .env（生产配置），不覆盖已显式设置的环境变量
+if [ -f "$(dirname "$0")/../.env" ]; then
+  set -a; . "$(dirname "$0")/../.env"; set +a
+fi
+PORT="${1:-${APP_PORT:-8000}}"
 
 # 探测局域网 IP（macOS）
 LAN_IP="$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || true)"

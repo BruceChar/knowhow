@@ -105,3 +105,6 @@ CREATE TABLE IF NOT EXISTS sessions (
     last_seen   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions (user_id);
+
+-- ============ 认证加固 v3：强制改密标志 ============
+ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT false;

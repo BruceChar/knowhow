@@ -18,10 +18,10 @@ from pathlib import Path
 import psycopg
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+from src.config import RAG_DSN as DEFAULT_DSN
 from src.providers.embedding_provider import get_embedding_provider
 from src.providers.vector_store_provider import get_vector_store
 
-DEFAULT_DSN = "postgresql://rag:rag_dev_2026@localhost:5433/rag"
 GATE_RECALL = 0.9       # 检索层：Recall@5 ≥ 0.9（2026-10-23 从 0.6 提升）
 GATE_PRECISION = 0.15   # 检索层：Precision@5 ≥ 0.15（每 case 单答案时上限 1/5=0.2）
 GATE_MRR = 0.5          # 检索层：MRR@5 ≥ 0.5（理想答案排位质量）

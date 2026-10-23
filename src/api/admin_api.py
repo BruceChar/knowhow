@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import os
+from datetime import datetime, timezone
 
 import psycopg
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
@@ -20,8 +21,9 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from src.auth.rbac import User, data_permission_clause, get_current_user, require_role
-
-DSN = os.environ.get("RAG_DSN", "postgresql://rag:rag_dev_2026@localhost:5433/rag")
+from src.config import RAG_DSN as DSN, MAX_UPLOAD_MB
+from src.config import SESSION_TTL_HOURS, LOGIN_LOCK_MINUTES
+from fastapi.responses import JSONResponse
 app = FastAPI(title="企业知识库管理台", version="0.1")
 
 # 静态资源：评测审计面板
@@ -220,7 +222,9 @@ def list_batches(user: User = Depends(require_role("reviewer"))):
     return [dict(zip(cols, r)) for r in rows]
 
 
-# ============ 账户登录认证 ============
+# ============ 账户登录认证（httpOnly Cookie 会话） ============
+
+SESSION_COOKIE = "kh_session"
 
 class LoginBody(BaseModel):
     username: str
@@ -228,25 +232,38 @@ class LoginBody(BaseModel):
 
 
 @app.post("/auth/login")
-def login(body: LoginBody):
-    """账号密码登录 → 返回会话 token（Bearer 使用）。"""
+def login(body: LoginBody, request: Request):
+    """账号密码登录 → 下发 httpOnly 会话 Cookie（SameSite=Lax 防跨站）。"""
     from src.auth import auth as _auth
-    info = _auth.authenticate(body.username, body.password, DSN)
+    ip = request.client.host if request.client else ""
+    info = _auth.authenticate(body.username, body.password, DSN, ip=ip)
     if info is None:
         raise HTTPException(401, "用户名或密码错误")
-    return {"ok": True, "token": info["token"],
-            "user": {"id": info["id"], "name": info["name"], "role": info["role"]}}
+    if info.get("locked"):
+        raise HTTPException(429, f"失败次数过多，已锁定 {LOGIN_LOCK_MINUTES} 分钟")
+    resp = JSONResponse({"ok": True,
+                         "user": {"id": info["id"], "name": info["name"],
+                                  "role": info["role"]},
+                         "must_change": info.get("must_change", False)})
+    resp.set_cookie(SESSION_COOKIE, info["token"],
+                    httponly=True, samesite="lax", max_age=SESSION_TTL_HOURS * 3600,
+                    path="/", secure=os.environ.get("COOKIE_SECURE", "0") == "1")
+    return resp
 
 
 @app.post("/auth/logout")
 def logout(request: Request, user: User = Depends(get_current_user)):
-    """登出：销毁当前会话 token。"""
+    """登出：销毁当前会话 token 并清除 Cookie。"""
     from src.auth import auth as _auth
-    auth_header = request.headers.get("Authorization", "")
-    token = auth_header[7:].strip() if auth_header.startswith("Bearer ") else ""
+    token = request.cookies.get(SESSION_COOKIE) or ""
+    if not token:
+        auth_header = request.headers.get("Authorization", "")
+        token = auth_header[7:].strip() if auth_header.startswith("Bearer ") else ""
     if token:
         _auth.delete_session(token, DSN)
-    return {"ok": True}
+    resp = JSONResponse({"ok": True})
+    resp.delete_cookie(SESSION_COOKIE, path="/")
+    return resp
 
 
 @app.get("/auth/me")
@@ -255,9 +272,45 @@ def me(user: User = Depends(get_current_user)):
     return {"id": user.id, "name": user.name, "role": user.role}
 
 
+class ChangePasswordBody(BaseModel):
+    old_password: str
+    new_password: str
+
+
+@app.post("/auth/password")
+def change_password(body: ChangePasswordBody, request: Request,
+                    user: User = Depends(get_current_user)):
+    """修改自己的密码；改密后注销除当前会话外的其他会话。"""
+    from src.auth import auth as _auth
+    if len(body.new_password) < 8:
+        raise HTTPException(400, "新密码至少 8 位")
+    with psycopg.connect(DSN) as conn, conn.cursor() as cur:
+        cur.execute("SELECT password_hash FROM users WHERE id=%s", (user.id,))
+        row = cur.fetchone()
+    if not row or not _auth.verify_password(body.old_password, row[0]):
+        raise HTTPException(400, "当前密码错误")
+    token = request.cookies.get(SESSION_COOKIE) or ""
+    _auth.set_password(user.id, body.new_password, DSN)
+    _auth.revoke_sessions(user.id, keep_token=token or None, dsn=DSN)
+    return {"ok": True, "msg": "密码已修改，其他设备已下线"}
+
+
 @app.get("/health")
 def health():
-    return {"status": "ok", "service": "admin-api"}
+    """健康检查：进程存活 + 数据库连通 + 模型就绪（供监控探活）。"""
+    db_ok = True
+    try:
+        with psycopg.connect(DSN, connect_timeout=3) as conn, conn.cursor() as cur:
+            cur.execute("SELECT 1")
+    except Exception as e:
+        db_ok = str(e)
+    return {
+        "status": "ok" if db_ok is True else "degraded",
+        "service": "admin-api",
+        "database": "ok" if db_ok is True else "error",
+        "embedding": "ready" if _embedding_provider is not None else "cold",
+        "ts": datetime.now(timezone.utc).isoformat(),
+    }
 
 
 # ============ 评测与召回审计（reviewer 以上） ============
@@ -364,6 +417,8 @@ def upload_file(file: UploadFile = File(...),
     if suffix not in {".xlsx", ".xls", ".json", ".docx", ".csv"}:
         raise HTTPException(400, f"不支持的文件类型 {suffix}（支持 xlsx/json/docx/csv）")
     content = file.file.read()
+    if len(content) > MAX_UPLOAD_MB * 1024 * 1024:
+        raise HTTPException(413, f"文件超过上限 {MAX_UPLOAD_MB}MB")
     sha = hashlib.sha256(content).hexdigest()[:16]
     dest = UPLOAD_DIR / f"{sha}{suffix}"
     dest.write_bytes(content)
