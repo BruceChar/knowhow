@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>企业知识库 · 评测与召回审计</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><rect width='24' height='24' rx='5' fill='%232563eb'/><path d='M7 8h10M7 12h7M7 16h10' stroke='white' stroke-width='2' stroke-linecap='round'/></svg>">
 <style>
   :root { --bg:#f4f6f8; --card:#fff; --border:#e2e8f0; --text:#1f2933; --muted:#64748b;
           --ok:#059669; --bad:#dc2626; --warn:#d97706; --blue:#2563eb; }
@@ -16,6 +17,7 @@
   .btn:hover { opacity:.9; }
   .btn:disabled { opacity:.5; cursor:wait; }
   .select { padding:8px 12px; border:1px solid var(--border); border-radius:6px; font-size:13px; background:#fff; }
+  input.select { font-size:16px; }  /* iOS 聚焦不缩放 */
   .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:18px; }
   .kpi { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:14px; text-align:center; }
   .kpi .v { font-size:28px; font-weight:700; }
@@ -48,6 +50,20 @@
   <h1>企业知识库 · 评测与召回审计台</h1>
   <div class="sub">黄金集 v2（57 条 / 35 模块）· 本地 bge-m3 · 门禁 Recall≥0.9 · MRR≥0.5 · 红线=0</div>
 
+  <div class="toolbar">
+    <div style="display:flex;align-items:center;gap:8px;margin-right:auto;">
+      <span style="font-size:13px;color:var(--muted);">当前身份：</span>
+      <span id="cur-user" class="tag tag-ok" style="font-weight:600;">u_reviewer · 审核员</span>
+      <select class="select" id="sel-user" onchange="switchUser(this.value)" style="font-size:12px;">
+        <option value="u_admin">u_admin · 管理员</option>
+        <option value="u_reviewer" selected>u_reviewer · 审核员</option>
+        <option value="u_editor">u_editor · 业务员</option>
+        <option value="u_agent">u_agent · 客服</option>
+      </select>
+      <span style="font-size:12px;color:var(--muted);">演示：切换后按 RBAC 过滤数据与操作</span>
+    </div>
+  </div>
+
   <div class="msg" id="msg"></div>
 
   <div class="toolbar">
@@ -68,10 +84,55 @@
   </div>
 
   <div class="nav-tabs">
+    <div class="tab" id="tab-ingest" onclick="switchTab('ingest')">数据入录</div>
+    <div class="tab" id="tab-users" onclick="switchTab('users')">权限分级</div>
     <div class="tab active" id="tab-trend" onclick="switchTab('trend')">评测趋势</div>
     <div class="tab" id="tab-audit" onclick="switchTab('audit')">召回审计（per-case）</div>
     <div class="tab" id="tab-redline" onclick="switchTab('redline')">红线案例</div>
     <div class="tab" id="tab-qa" onclick="switchTab('qa')">问答审计日志</div>
+  </div>
+
+  <!-- 数据入录 -->
+  <div class="tab-panel" id="panel-ingest">
+    <div class="card">
+      <h3>上传原始数据 → 批次入录（editor 以上）</h3>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
+        <input type="file" id="ingest-file" class="select" accept=".xlsx,.xls,.json,.docx,.csv">
+        <select class="select" id="ingest-kind"><option value="facts">产品图鉴 facts（xlsx）</option><option value="faq">话术库 faq（json）</option></select>
+        <select class="select" id="ingest-config"><option value="jiacong_facts">jiacong_facts 映射</option></select>
+        <button class="btn" id="btn-upload" onclick="uploadAndRun()">上传并入录</button>
+      </div>
+      <div id="ingest-status" style="font-size:13px;color:var(--muted);"></div>
+    </div>
+    <div class="card">
+      <h3>入录批次（留档原始数据 + 问题行审计）</h3>
+      <table id="batch-table">
+        <thead><tr><th style="width:60px;">#</th><th>源文件</th><th>类型</th><th>总数</th><th>已入</th><th>待修</th><th>坏行</th><th>状态</th><th>操作</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- 权限分级 -->
+  <div class="tab-panel" id="panel-users">
+    <div class="card">
+      <h3>用户与角色（admin 可管理 · 生产环境接 SSO/JWT）</h3>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
+        <input class="select" id="nu-id" placeholder="用户 ID，如 u_sales3" style="width:160px;">
+        <input class="select" id="nu-name" placeholder="姓名" style="width:120px;">
+        <select class="select" id="nu-role">
+          <option value="agent">客服 agent</option>
+          <option value="editor">业务员 editor</option>
+          <option value="reviewer">审核员 reviewer</option>
+          <option value="admin">管理员 admin</option>
+        </select>
+        <button class="btn" onclick="createUser()">新建用户</button>
+      </div>
+      <table id="user-table">
+        <thead><tr><th>用户 ID</th><th>姓名</th><th>角色</th><th>权限范围</th><th>调整角色</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
   </div>
 
   <!-- 趋势 -->
@@ -121,6 +182,15 @@
 <script>
 const API = '';  // 同源部署；跨域时改为后端地址如 http://localhost:8000
 let currentReport = null;
+let CURRENT_USER = 'u_reviewer';
+
+const ROLE_LABEL = {agent:'客服', editor:'业务员', reviewer:'审核员', admin:'管理员'};
+const ROLE_SCOPE = {
+  agent:'public + internal（可检索问答）',
+  editor:'全部数据（可编辑/打标/入录）',
+  reviewer:'全部数据（+审核/评测/审计）',
+  admin:'全部数据（+用户角色管理）'
+};
 
 function esc(s){ return (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
@@ -131,12 +201,27 @@ function switchTab(name){
   document.getElementById('panel-'+name).classList.add('active');
 }
 
+function switchUser(uid){
+  CURRENT_USER = uid;
+  const u = document.getElementById('cur-user');
+  u.textContent = uid + ' · ' + (ROLE_LABEL[uid.replace('u_','')]||uid);
+  // 角色映射：u_admin→admin, u_reviewer→reviewer, u_editor→editor, u_agent→agent
+  showMsg('已切换为 ' + uid + '（' + (ROLE_LABEL[uid.replace('u_','')]||'') + '）', true);
+  try { loadBatches(); } catch(e){}
+  try { loadUsers(); } catch(e){}
+  try { loadMapping(); } catch(e){}
+}
+
 async function api(path, opts={}){
   const r = await fetch(API + path, {
-    headers: {'Content-Type':'application/json', 'X-User-Id':'u_reviewer'},
+    headers: {'Content-Type':'application/json', 'X-User-Id': CURRENT_USER},
     ...opts
   });
-  if(!r.ok) throw new Error(path + ' → HTTP ' + r.status);
+  if(!r.ok){
+    let detail = 'HTTP ' + r.status;
+    try { const j = await r.json(); detail = j.detail || detail; } catch(e){}
+    throw new Error(detail);
+  }
   return r.json();
 }
 
@@ -150,6 +235,9 @@ async function init(){
     loadTrend(reports);
     loadQALog();
   } catch(e){ showMsg(e.message, false); }
+  loadBatches();
+  loadUsers();
+  loadMapping();
 }
 
 async function runEval(){
@@ -271,6 +359,134 @@ function showMsg(text, ok){
   const m = document.getElementById('msg');
   m.textContent = text; m.className = 'msg ' + (ok?'ok':'err');
   setTimeout(()=>{ m.className='msg'; }, 8000);
+}
+
+// ============ 数据入录 ============
+async function loadMapping(){
+  try {
+    const d = await api('/mapping-config');
+    const sel = document.getElementById('ingest-config');
+    const opts = (d.yaml||[]).map(k=>`<option value="${k}">${k} 映射</option>`).join('');
+    sel.innerHTML = opts || '<option>（无映射配置）</option>';
+  } catch(e){ /* 权限不足时静默 */ }
+}
+
+async function loadBatches(){
+  try {
+    const rows = await api('/batches');
+    const tb = document.querySelector('#batch-table tbody');
+    tb.innerHTML = rows.map(b=>`
+      <tr>
+        <td class="mono">${b.id}</td>
+        <td>${esc(b.source_file)}</td>
+        <td>${esc(b.source_kind)}</td>
+        <td>${b.total_rows}</td>
+        <td>${b.loaded_rows}</td>
+        <td style="${b.pending_rows?'color:var(--warn);font-weight:600;':''}">${b.pending_rows}</td>
+        <td style="${b.bad_rows?'color:var(--bad);font-weight:600;':''}">${b.bad_rows}</td>
+        <td><span class="tag ${b.status==='done'?'tag-ok':'tag-red'}">${esc(b.status)}</span></td>
+        <td><button class="btn" style="padding:4px 10px;font-size:12px;"
+          onclick="showBatch(${b.id})">明细</button></td>
+      </tr>`).join('') || '<tr><td colspan="9" style="color:var(--muted);text-align:center;">暂无批次</td></tr>';
+  } catch(e){ /* agent 无权限：静默 */ }
+}
+
+async function showBatch(id){
+  try {
+    const d = await api('/batches/'+id);
+    const problem = d.problem_rows||[];
+    let html = `<div style="font-size:13px;margin-bottom:8px;">
+      源文件 <b>${esc(d.source_file)}</b> · ${d.source_kind} ·
+      总数 ${d.total_rows} · 已入 ${d.loaded_rows} · 待修 ${d.pending_rows} · 坏行 ${d.bad_rows} ·
+      状态 <b>${esc(d.status)}</b> · 由 ${esc(d.started_by||'')} 于 ${(d.started_at||'').slice(0,16).replace('T',' ')}</div>`;
+    if(problem.length){
+      html += '<table style="font-size:12px;"><thead><tr><th>行号</th><th>sheet</th><th>判定</th><th>错误</th></tr></thead><tbody>' +
+        problem.map(p=>`<tr><td class="mono">${p.row_no}</td><td>${esc(p.sheet)}</td>
+          <td><span class="tag ${p.verdict==='bad'?'tag-bad':'tag-red'}">${p.verdict}</span></td>
+          <td style="white-space:pre-wrap;">${esc((p.errs||[]).join('; '))}</td></tr>`).join('') + '</tbody></table>';
+    } else {
+      html += '<div style="font-size:13px;color:var(--ok);">无问题行，全部正常入录。</div>';
+    }
+    // 简易模态展示
+    const old = document.getElementById('batch-detail');
+    if(old) old.remove();
+    const div = document.createElement('div');
+    div.id = 'batch-detail';
+    div.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;z-index:99;';
+    div.innerHTML = `<div style="background:#fff;border-radius:12px;padding:18px;max-width:720px;width:90%;max-height:80vh;overflow:auto;">
+      <h3 style="margin-bottom:10px;">批次 #${d.id} 明细</h3>${html}
+      <button class="btn" style="margin-top:12px;" onclick="document.getElementById('batch-detail').remove()">关闭</button></div>`;
+    div.addEventListener('click', e=>{ if(e.target===div) div.remove(); });
+    document.body.appendChild(div);
+  } catch(e){ showMsg('批次详情：'+e.message, false); }
+}
+
+async function uploadAndRun(){
+  const btn = document.getElementById('btn-upload');
+  const file = document.getElementById('ingest-file').files[0];
+  if(!file){ showMsg('请先选择文件', false); return; }
+  btn.disabled = true;
+  document.getElementById('ingest-status').textContent = '上传中…';
+  try {
+    const fd = new FormData();
+    fd.append('file', file);
+    const r = await fetch(API + '/upload', {method:'POST', headers:{'X-User-Id':CURRENT_USER}, body:fd});
+    if(!r.ok){ const j = await r.json().catch(()=>({})); throw new Error(j.detail||('HTTP '+r.status)); }
+    const up = await r.json();
+    document.getElementById('ingest-status').textContent = `已上传 ${up.filename}（${(up.size/1024).toFixed(0)}KB）→ 执行入录…`;
+    const kind = document.getElementById('ingest-kind').value;
+    const cfg = document.getElementById('ingest-config').value;
+    const res = await api('/ingest/run', {method:'POST', body: JSON.stringify({path:up.path, kind, config:cfg})});
+    const loaded = res.loaded + (res.updated || 0);
+    showMsg(`入录完成：批次 #${res.batch_id}，新增 ${res.loaded} / 更新 ${res.updated||0} / 待修 ${res.pending||0} / 坏行 ${res.bad||0}`, true);
+    document.getElementById('ingest-status').textContent = '';
+    loadBatches();
+  } catch(e){ showMsg('入录失败：'+e.message, false); }
+  finally { btn.disabled = false; document.getElementById('ingest-status').textContent = ''; }
+}
+
+// ============ 权限分级 ============
+async function loadUsers(){
+  try {
+    const d = await api('/users');
+    const tb = document.querySelector('#user-table tbody');
+    tb.innerHTML = (d.users||[]).map(u=>`
+      <tr>
+        <td class="mono">${esc(u.id)}</td>
+        <td>${esc(u.name)}</td>
+        <td><span class="tag ${u.role==='admin'?'tag-red':u.role==='reviewer'?'tag-ok':'tag-ok'}">${ROLE_LABEL[u.role]||u.role}</span></td>
+        <td style="font-size:12px;color:var(--muted);">${ROLE_SCOPE[u.role]||''}</td>
+        <td>
+          <select class="select" style="font-size:12px;padding:4px 8px;" onchange="changeRole('${u.id}', this.value)">
+            ${Object.keys(ROLE_LABEL).map(r=>`<option value="${r}" ${r===u.role?'selected':''}>${ROLE_LABEL[r]}</option>`).join('')}
+          </select>
+        </td>
+      </tr>`).join('') || '<tr><td colspan="5" style="color:var(--muted);text-align:center;">无用户</td></tr>';
+  } catch(e){ /* 非 admin：面板仍可见但提示 */ 
+    const tb = document.querySelector('#user-table tbody');
+    tb.innerHTML = '<tr><td colspan="5" style="color:var(--muted);text-align:center;">需要 admin 角色才能查看用户管理</td></tr>';
+  }
+}
+
+async function changeRole(uid, role){
+  try {
+    const d = await api('/users/'+uid+'/role', {method:'PUT', body: JSON.stringify({role})});
+    showMsg(`已将 ${d.user.name}（${d.user.id}）的角色调整为「${ROLE_LABEL[role]}」`, true);
+    loadUsers();
+  } catch(e){ showMsg('调整角色失败：'+e.message, false); loadUsers(); }
+}
+
+async function createUser(){
+  const id = document.getElementById('nu-id').value.trim();
+  const name = document.getElementById('nu-name').value.trim();
+  const role = document.getElementById('nu-role').value;
+  if(!id || !name){ showMsg('请填写用户 ID 和姓名', false); return; }
+  try {
+    const d = await api('/users', {method:'POST', body: JSON.stringify({id, name, role})});
+    showMsg(`已创建用户 ${d.user.name}（${d.user.id} · ${ROLE_LABEL[role]}）`, true);
+    document.getElementById('nu-id').value = ''; document.getElementById('nu-name').value = '';
+    loadUsers();
+  } catch(e){ showMsg('创建用户失败：'+e.message, false); }
 }
 
 init();

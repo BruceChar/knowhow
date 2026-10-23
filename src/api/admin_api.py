@@ -301,3 +301,138 @@ def list_audit_log(limit: int = Query(default=50, le=200),
     cols = ["inquiry_id", "channel", "question", "answer", "citations",
             "action_level", "decision", "latency_ms", "model", "created_at"]
     return [dict(zip(cols, r)) for r in rows]
+
+
+# ============ 数据入录（editor 以上可上传/执行，reviewer 以上看明细） ============
+
+import hashlib
+import pathlib
+import shutil
+import tempfile
+from fastapi import UploadFile, File, Form
+
+UPLOAD_DIR = pathlib.Path("data/uploads")
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+
+@app.post("/upload")
+def upload_file(file: UploadFile = File(...),
+                user: User = Depends(require_role("editor"))):
+    """上传原始数据文件（xlsx/json/docx…），存 data/uploads，返回路径与哈希。"""
+    suffix = pathlib.Path(file.filename or "file").suffix.lower()
+    if suffix not in {".xlsx", ".xls", ".json", ".docx", ".csv"}:
+        raise HTTPException(400, f"不支持的文件类型 {suffix}（支持 xlsx/json/docx/csv）")
+    content = file.file.read()
+    sha = hashlib.sha256(content).hexdigest()[:16]
+    dest = UPLOAD_DIR / f"{sha}{suffix}"
+    dest.write_bytes(content)
+    return {"filename": file.filename, "path": str(dest), "size": len(content),
+            "sha256": sha, "kind": "faq" if suffix == ".json" else "facts"}
+
+
+class IngestRunBody(BaseModel):
+    path: str
+    kind: str = "facts"          # facts | faq
+    config: str | None = None    # 映射配置名，默认 jiacong_facts
+
+
+@app.post("/ingest/run")
+def ingest_run(body: IngestRunBody,
+               user: User = Depends(require_role("editor"))):
+    """执行入录：文件 → 解析/映射/校验/入库，返回批次统计。"""
+    from src.ingest import pipeline
+    try:
+        result = pipeline.run(body.path, body.kind, body.config)
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e))
+    except Exception as e:
+        raise HTTPException(500, f"入录失败: {e}")
+    return {"ok": True, "by": user.name, **result}
+
+
+@app.get("/batches/{batch_id}")
+def get_batch(batch_id: int,
+              user: User = Depends(require_role("reviewer"))):
+    """批次详情：统计 + raw_data 明细（bad/pending_manual 可审计）。"""
+    with _conn() as conn, conn.cursor() as cur:
+        cur.execute("""
+            SELECT id, source_file, source_kind, total_rows, loaded_rows,
+                   pending_rows, bad_rows, status, error_msg, started_by,
+                   started_at, finished_at
+            FROM import_batch WHERE id=%s
+        """, (batch_id,))
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(404, "批次不存在")
+        cur.execute("""
+            SELECT id, sheet_name, row_no, verdict, errs, mapped
+            FROM raw_data WHERE batch_id=%s AND verdict IN ('bad','pending_manual')
+            ORDER BY id LIMIT 200
+        """, (batch_id,))
+        bads = cur.fetchall()
+    cols = ["id", "source_file", "source_kind", "total_rows", "loaded_rows",
+            "pending_rows", "bad_rows", "status", "error_msg", "started_by",
+            "started_at", "finished_at"]
+    d = dict(zip(cols, row))
+    d["problem_rows"] = [
+        {"id": r[0], "sheet": r[1], "row_no": r[2], "verdict": r[3],
+         "errs": r[4], "mapped": r[5]} for r in bads]
+    return d
+
+
+@app.get("/mapping-config")
+def list_mapping_configs(user: User = Depends(require_role("reviewer"))):
+    """可用映射配置（YAML 基线 + DB 运行时通道）。"""
+    from src.config_loader import CONFIG_DIR
+    cfgs = [p.stem for p in CONFIG_DIR.glob("*.yaml")] if CONFIG_DIR.exists() else []
+    # 附加 DB 通道配置
+    try:
+        with _conn() as conn, conn.cursor() as cur:
+            cur.execute("SELECT config_key, active FROM mapping_config ORDER BY config_key")
+            db_cfgs = [{"key": r[0], "active": r[1]} for r in cur.fetchall()]
+    except Exception:
+        db_cfgs = []
+    return {"yaml": cfgs, "db": db_cfgs}
+
+
+# ============ 权限管理（仅 admin） ============
+
+class UserCreate(BaseModel):
+    id: str
+    name: str
+    role: str
+
+
+class RoleUpdate(BaseModel):
+    role: str
+
+
+@app.get("/users")
+def list_users_api(user: User = Depends(require_role("admin"))):
+    """用户列表（含角色），供管理端权限分级展示。"""
+    from src.auth import rbac
+    return {"users": rbac.list_users()}
+
+
+@app.post("/users")
+def create_user_api(body: UserCreate,
+                    user: User = Depends(require_role("admin"))):
+    """新建用户并分配角色。"""
+    from src.auth import rbac
+    try:
+        u = rbac.create_user(body.id, body.name, body.role)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"ok": True, "user": {"id": u.id, "name": u.name, "role": u.role}}
+
+
+@app.put("/users/{uid}/role")
+def change_user_role(uid: str, body: RoleUpdate,
+                     user: User = Depends(require_role("admin"))):
+    """变更用户角色（权限分级核心操作）。"""
+    from src.auth import rbac
+    try:
+        u = rbac.update_user_role(uid, body.role)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"ok": True, "user": {"id": u.id, "name": u.name, "role": u.role}}

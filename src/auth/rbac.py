@@ -45,20 +45,51 @@ class User:
         return self.level >= ROLE_ORDER.get(min_role, 0)
 
 
-# ---------------- 用户解析（测试用静态表，生产换 SSO） ----------------
-# 注：真实部署时从会话/JWT 解析，这里用 X-User-Role 头模拟（演示与联调用）
+# ---------------- 用户解析（MVP：内存运行时表，生产换 SSO/JWT） ----------------
+# 注：真实部署时从会话/JWT 解析，这里用 X-User-Id 头模拟（演示与联调用）。
+# USERS 为运行时可变表（admin_api 的 /users 端点读写）；以 STATIC_USERS 为种子。
 STATIC_USERS = {
     "u_admin": User("u_admin", "管理员", "admin"),
     "u_reviewer": User("u_reviewer", "审核员", "reviewer"),
     "u_editor": User("u_editor", "业务员", "editor"),
     "u_agent": User("u_agent", "客服", "agent"),
 }
+USERS: dict[str, User] = dict(STATIC_USERS)
+
+VALID_ROLES = set(ROLE_ORDER.keys())
+
+
+def list_users() -> list[dict]:
+    """返回全部用户（含角色），供管理端展示。"""
+    return [{"id": u.id, "name": u.name, "role": u.role}
+            for u in USERS.values()]
+
+
+def create_user(uid: str, name: str, role: str) -> User:
+    """新建用户；uid 冲突或角色非法时报错。"""
+    if uid in USERS:
+        raise ValueError(f"用户已存在: {uid}")
+    if role not in VALID_ROLES:
+        raise ValueError(f"非法角色 {role!r}，可选 {sorted(VALID_ROLES)}")
+    u = User(uid, name, role)
+    USERS[uid] = u
+    return u
+
+
+def update_user_role(uid: str, role: str) -> User:
+    """变更角色；uid 不存在或角色非法时报错。"""
+    if uid not in USERS:
+        raise ValueError(f"用户不存在: {uid}")
+    if role not in VALID_ROLES:
+        raise ValueError(f"非法角色 {role!r}，可选 {sorted(VALID_ROLES)}")
+    USERS[uid].role = role
+    return USERS[uid]
 
 
 def get_current_user(request: Request) -> User:
     """从请求解析当前用户。开发环境用 X-User-Id 头；生产接 JWT。"""
     uid = request.headers.get("X-User-Id", "u_agent")
-    user = STATIC_USERS.get(uid)
+    user = USERS.get(uid)
     if user is None:
         raise HTTPException(status_code=401, detail="未知用户")
     return user
