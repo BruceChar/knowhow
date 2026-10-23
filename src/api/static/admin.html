@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>企业知识库 · 评测与召回审计</title>
+<style>
+  :root { --bg:#f4f6f8; --card:#fff; --border:#e2e8f0; --text:#1f2933; --muted:#64748b;
+          --ok:#059669; --bad:#dc2626; --warn:#d97706; --blue:#2563eb; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:-apple-system,'PingFang SC','Noto Sans SC',sans-serif; background:var(--bg); color:var(--text); padding:20px; }
+  h1 { font-size:20px; margin-bottom:4px; }
+  .sub { color:var(--muted); font-size:13px; margin-bottom:18px; }
+  .toolbar { display:flex; gap:10px; align-items:center; margin-bottom:18px; flex-wrap:wrap; }
+  .btn { background:var(--blue); color:#fff; border:none; border-radius:6px; padding:9px 16px; font-size:14px; cursor:pointer; }
+  .btn:hover { opacity:.9; }
+  .btn:disabled { opacity:.5; cursor:wait; }
+  .select { padding:8px 12px; border:1px solid var(--border); border-radius:6px; font-size:13px; background:#fff; }
+  .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:18px; }
+  .kpi { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:14px; text-align:center; }
+  .kpi .v { font-size:28px; font-weight:700; }
+  .kpi .l { font-size:12px; color:var(--muted); margin-top:2px; }
+  .kpi .ok { color:var(--ok); } .kpi .bad { color:var(--bad); } .kpi .warn { color:var(--warn); }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .card h3 { font-size:15px; margin-bottom:12px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th,td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--border); vertical-align:top; }
+  th { color:var(--muted); font-weight:600; background:#f8fafc; }
+  .tag { display:inline-block; padding:2px 8px; border-radius:4px; font-size:12px; }
+  .tag-ok { background:#ecfdf5; color:var(--ok); }
+  .tag-bad { background:#fef2f2; color:var(--bad); }
+  .tag-red { background:#fffbeb; color:var(--warn); }
+  .miss-row { background:#fff7f7; }
+  .mono { font-family:Menlo,monospace; font-size:12px; }
+  .trend { height:120px; }
+  .msg { padding:10px 14px; border-radius:8px; font-size:13px; margin-bottom:14px; display:none; }
+  .msg.ok { background:#ecfdf5; color:var(--ok); display:block; }
+  .msg.err { background:#fef2f2; color:var(--bad); display:block; }
+  .nav-tabs { display:flex; gap:6px; margin-bottom:16px; }
+  .tab { padding:8px 16px; border-radius:6px 6px 0 0; cursor:pointer; font-size:13px; background:#e2e8f0; color:var(--muted); }
+  .tab.active { background:var(--card); color:var(--text); font-weight:600; border:1px solid var(--border); border-bottom:none; }
+  .tab-panel { display:none; } .tab-panel.active { display:block; }
+  .gate-bar { display:flex; align-items:center; gap:10px; font-size:13px; padding:8px 0; }
+  .gate-dot { width:12px; height:12px; border-radius:50%; display:inline-block; }
+</style>
+</head>
+<body>
+  <h1>企业知识库 · 评测与召回审计台</h1>
+  <div class="sub">黄金集 v2（57 条 / 35 模块）· 本地 bge-m3 · 门禁 Recall≥0.9 · MRR≥0.5 · 红线=0</div>
+
+  <div class="msg" id="msg"></div>
+
+  <div class="toolbar">
+    <button class="btn" id="btn-run" onclick="runEval()">▶ 触发评测</button>
+    <select class="select" id="sel-report" onchange="loadReport(this.value)">
+      <option value="">选择历史评测报告…</option>
+    </select>
+    <span id="run-status" style="font-size:13px;color:var(--muted);"></span>
+  </div>
+
+  <div class="kpis" id="kpis" style="opacity:.4;">
+    <div class="kpi"><div class="v" id="k-recall">—</div><div class="l">Recall@5（≥0.9）</div></div>
+    <div class="kpi"><div class="v" id="k-precision">—</div><div class="l">Precision@5（≥0.15）</div></div>
+    <div class="kpi"><div class="v" id="k-mrr">—</div><div class="l">MRR@5（≥0.5）</div></div>
+    <div class="kpi"><div class="v" id="k-fact">—</div><div class="l">事实正确率（≥0.9）</div></div>
+    <div class="kpi"><div class="v" id="k-red">—</div><div class="l">红线错误（=0）</div></div>
+    <div class="kpi"><div class="v" id="k-gate">—</div><div class="l">门禁</div></div>
+  </div>
+
+  <div class="nav-tabs">
+    <div class="tab active" id="tab-trend" onclick="switchTab('trend')">评测趋势</div>
+    <div class="tab" id="tab-audit" onclick="switchTab('audit')">召回审计（per-case）</div>
+    <div class="tab" id="tab-redline" onclick="switchTab('redline')">红线案例</div>
+    <div class="tab" id="tab-qa" onclick="switchTab('qa')">问答审计日志</div>
+  </div>
+
+  <!-- 趋势 -->
+  <div class="tab-panel active" id="panel-trend">
+    <div class="card">
+      <h3>历次评测指标（随知识库迭代追踪召回质量）</h3>
+      <canvas class="trend" id="trend-canvas"></canvas>
+    </div>
+  </div>
+
+  <!-- 召回审计 -->
+  <div class="tab-panel" id="panel-audit">
+    <div class="card">
+      <h3>召回审计明细 · <span id="audit-summary"></span></h3>
+      <div style="overflow-x:auto;">
+      <table id="audit-table">
+        <thead><tr>
+          <th style="width:90px;">case</th><th>模块</th><th style="width:24%;">客户问题</th>
+          <th>结果</th><th style="width:36%;">Top-5 检索命中</th><th>MRR</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- 红线 -->
+  <div class="tab-panel" id="panel-redline">
+    <div class="card">
+      <h3>红线案例审计（价格/交期/认证/合规，错误一票否决）</h3>
+      <table id="redline-table"><thead><tr><th>case</th><th>客户问题</th><th>命中</th><th>Top-5</th></tr></thead><tbody></tbody></table>
+    </div>
+  </div>
+
+  <!-- 问答审计 -->
+  <div class="tab-panel" id="panel-qa">
+    <div class="card">
+      <h3>客服问答审计日志（每次交互的决策与引用）</h3>
+      <table id="qa-table">
+        <thead><tr><th>时间</th><th>渠道</th><th style="width:20%;">客户问题</th>
+        <th style="width:30%;">系统回答</th><th>决策</th><th>动作级</th><th>耗时</th><th>引用</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+<script>
+const API = '';  // 同源部署；跨域时改为后端地址如 http://localhost:8000
+let currentReport = null;
+
+function esc(s){ return (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+function switchTab(name){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+  document.getElementById('tab-'+name).classList.add('active');
+  document.getElementById('panel-'+name).classList.add('active');
+}
+
+async function api(path, opts={}){
+  const r = await fetch(API + path, {
+    headers: {'Content-Type':'application/json', 'X-User-Id':'u_reviewer'},
+    ...opts
+  });
+  if(!r.ok) throw new Error(path + ' → HTTP ' + r.status);
+  return r.json();
+}
+
+async function init(){
+  try {
+    const reports = await api('/eval/reports?limit=20');
+    const sel = document.getElementById('sel-report');
+    sel.innerHTML = '<option value="">选择历史评测报告…</option>' + reports.map(r=>
+      `<option value="${r.id}">#${r.id} ${r.goldset_name} · Recall ${r.recall_at_5} · ${r.gate_passed?'✅':'❌'} · ${r.created_at.slice(0,16).replace('T',' ')}</option>`).join('');
+    if(reports.length) loadReport(reports[0].id);
+    loadTrend(reports);
+    loadQALog();
+  } catch(e){ showMsg(e.message, false); }
+}
+
+async function runEval(){
+  const btn = document.getElementById('btn-run');
+  btn.disabled = true;
+  document.getElementById('run-status').textContent = '评测运行中（首次含模型加载，约 30-60s）…';
+  try {
+    const d = await api('/eval/run', {method:'POST'});
+    showMsg(`评测完成：Recall@5=${d.retrieval.recall_at_5}，MRR=${d.retrieval.mrr_at_5}，红线=${d.metrics.red_line.red_line_errors}，门禁${d.gate_passed?'✅ PASS':'❌ FAIL'}`, d.gate_passed);
+    init();  // 刷新列表与趋势
+  } catch(e){ showMsg('评测失败：'+e.message, false); }
+  finally { btn.disabled = false; document.getElementById('run-status').textContent=''; }
+}
+
+async function loadReport(id){
+  if(!id) return;
+  try {
+    const d = await api('/eval/reports/'+id);
+    currentReport = d;
+    const set = (k, v, cls) => { const el = document.getElementById(k); el.textContent = v; el.className = 'v '+(cls||''); };
+    set('k-recall', d.recall_at_5, d.recall_at_5>=0.9?'ok':'bad');
+    set('k-precision', d.precision_at_5, d.precision_at_5>=0.15?'ok':'bad');
+    set('k-mrr', d.mrr_at_5, d.mrr_at_5>=0.5?'ok':'bad');
+    set('k-fact', d.fact_accuracy, d.fact_accuracy>=0.9?'ok':'bad');
+    set('k-red', d.red_line_errors, d.red_line_errors===0?'ok':'bad');
+    set('k-gate', d.gate_passed?'✅ PASS':'❌ FAIL', d.gate_passed?'ok':'bad');
+    document.getElementById('kpis').style.opacity = 1;
+    renderAudit(d.detail);
+    renderRedline(d.detail);
+  } catch(e){ showMsg('加载报告失败：'+e.message, false); }
+}
+
+function renderAudit(detail){
+  const per = detail.per_case || [];
+  const miss = per.filter(p=>!p.hit);
+  document.getElementById('audit-summary').textContent =
+    `命中 ${per.length - miss.length}/${per.length} · miss ${miss.length} 条`;
+  const tb = document.querySelector('#audit-table tbody');
+  tb.innerHTML = per.map(p=>{
+    const isMiss = !p.hit;
+    const topTxt = (p.top_questions||[]).map((q,i)=>`${i+1}. ${esc(q)}`).join('<br>');
+    const mod = esc((p.case||'').replace(/^GS2-/,'').slice(0,2));
+    return `<tr class="${isMiss?'miss-row':''}">
+      <td class="mono">${esc(p.case)}</td><td>M${mod}</td>
+      <td>${esc(p.query)}</td>
+      <td>${isMiss?'<span class="tag tag-bad">MISS</span>':'<span class="tag tag-ok">HIT</span>'}</td>
+      <td>${topTxt}</td>
+      <td>${p.rr?p.rr.toFixed(2):'0'}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderRedline(detail){
+  const rd = detail.red_line_details || [];
+  const tb = document.querySelector('#redline-table tbody');
+  tb.innerHTML = rd.map(r=>{
+    const ok = r.hit;
+    const topTxt = (r.top_questions||[]).map(q=>esc(q)).join('<br>');
+    return `<tr class="${ok?'':'miss-row'}"><td class="mono">${esc(r.case)}</td>
+      <td>${esc((detail.per_case.find(p=>p.case===r.case)||{}).query||'')}</td>
+      <td>${ok?'<span class="tag tag-ok">命中</span>':'<span class="tag tag-bad">MISS</span>'}</td>
+      <td>${topTxt}</td></tr>`;
+  }).join('');
+}
+
+function loadTrend(reports){
+  const cv = document.getElementById('trend-canvas');
+  if(!cv || !reports.length) return;
+  const dpr = window.devicePixelRatio||1;
+  const w = cv.clientWidth, h = cv.clientHeight;
+  cv.width = w*dpr; cv.height = h*dpr;
+  const ctx = cv.getContext('2d'); ctx.scale(dpr,dpr);
+  ctx.clearRect(0,0,w,h);
+  const data = reports.slice().reverse();
+  const xs = i => 40 + i*(w-80)/Math.max(1,data.length-1);
+  const ymax = 1.0;
+  const yv = v => h-24 - v*(h-48);
+  // 网格
+  ctx.strokeStyle='#e2e8f0'; ctx.fillStyle='#94a3b8'; ctx.font='11px sans-serif'; ctx.textAlign='right';
+  for(let v=0; v<=1; v+=0.25){ ctx.beginPath(); ctx.moveTo(40,yv(v)); ctx.lineTo(w-40,yv(v)); ctx.stroke();
+    ctx.fillText(v.toFixed(2), 32, yv(v)+4); }
+  ctx.textAlign='center';
+  // 门禁线 0.9
+  ctx.strokeStyle='#dc2626'; ctx.setLineDash([4,4]);
+  ctx.beginPath(); ctx.moveTo(40,yv(0.9)); ctx.lineTo(w-40,yv(0.9)); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle='#dc2626'; ctx.fillText('门禁 0.9', w-40, yv(0.9)-4);
+  // 折线
+  const draw = (key, color) => {
+    ctx.strokeStyle=color; ctx.lineWidth=2; ctx.beginPath();
+    data.forEach((r,i)=>{ const x=xs(i), y=yv(r[key]||0); i?ctx.lineTo(x,y):ctx.moveTo(x,y); });
+    ctx.stroke();
+  };
+  draw('recall_at_5','#2563eb');
+  draw('mrr_at_5','#059669');
+  draw('fact_accuracy','#d97706');
+  // 图例
+  ctx.textAlign='left';
+  ctx.fillStyle='#2563eb'; ctx.fillRect(w-120,8,12,4); ctx.fillText(' Recall@5', w-104,13);
+  ctx.fillStyle='#059669'; ctx.fillRect(w-120,26,12,4); ctx.fillText(' MRR@5', w-104,31);
+  ctx.fillStyle='#d97706'; ctx.fillRect(w-120,44,12,4); ctx.fillText(' Fact', w-104,49);
+}
+
+async function loadQALog(){
+  try {
+    const rows = await api('/audit-log?limit=50');
+    const tb = document.querySelector('#qa-table tbody');
+    tb.innerHTML = rows.length ? rows.map(r=>`
+      <tr>
+        <td class="mono">${esc((r.created_at||'').slice(0,16).replace('T',' '))}</td>
+        <td>${esc(r.channel)}</td><td>${esc(r.question)}</td><td>${esc(r.answer||'').slice(0,120)}</td>
+        <td><span class="tag ${r.decision==='auto'?'tag-ok':'tag-red'}">${esc(r.decision)}</span></td>
+        <td>${esc(r.action_level)}</td><td>${r.latency_ms}ms</td>
+        <td class="mono">${esc((r.citations||[]).join(','))}</td>
+      </tr>`).join('') : '<tr><td colspan="8" style="color:var(--muted);text-align:center;">暂无问答审计记录（客服问答接口尚未产生流量）</td></tr>';
+  } catch(e){ /* 静默 */ }
+}
+
+function showMsg(text, ok){
+  const m = document.getElementById('msg');
+  m.textContent = text; m.className = 'msg ' + (ok?'ok':'err');
+  setTimeout(()=>{ m.className='msg'; }, 8000);
+}
+
+init();
+</script>
+</body>
+</html>

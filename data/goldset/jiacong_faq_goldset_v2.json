@@ -580,9 +580,9 @@
       ],
       "red_line": false,
       "ideal_hit_questions": [
-        "Buyer sends a product card followed by “Interested”."
+        "\"Please send the full specification sheet / datasheet for this model.\""
       ],
-      "data_gap": "spec sheet 无独立 FAQ 条目，需补录产品规格知识"
+      "note": "已补录 spec sheet FAQ（M15-Q012-specsheet），数据缺口关闭"
     }
   ]
 }

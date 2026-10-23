@@ -183,10 +183,18 @@ PROVIDER_REGISTRY: dict[str, type[EmbeddingProvider]] = {
 }
 
 
+_PROVIDER_CACHE: dict[str, EmbeddingProvider] = {}
+
+
 def get_embedding_provider(backend: str | None = None) -> EmbeddingProvider:
-    """防腐层工厂：EMBEDDING_BACKEND 环境变量 > 显式参数 > 默认 local。"""
+    """防腐层工厂：EMBEDDING_BACKEND 环境变量 > 显式参数 > 默认 local。
+
+    进程级单例：同一 backend 只实例化一次（模型加载代价高），
+    服务进程内首次加载后，后续检索/评测/入录全部复用。"""
     name = backend or os.environ.get("EMBEDDING_BACKEND", "local")
     cls = PROVIDER_REGISTRY.get(name)
     if cls is None:
         raise ValueError(f"未知 embedding backend: {name!r}，可选 {list(PROVIDER_REGISTRY)}")
-    return cls()
+    if name not in _PROVIDER_CACHE:
+        _PROVIDER_CACHE[name] = cls()
+    return _PROVIDER_CACHE[name]

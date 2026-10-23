@@ -69,3 +69,22 @@ CREATE INDEX IF NOT EXISTS idx_raw_verdict ON raw_data (verdict);
 CREATE INDEX IF NOT EXISTS idx_batch_status ON import_batch (status, source_kind);
 CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log (created_at);
 CREATE INDEX IF NOT EXISTS idx_issue_status ON issue (status, priority);
+
+-- ============ eval_report：评测历史持久化（v2 黄金集起） ============
+CREATE TABLE IF NOT EXISTS eval_report (
+    id              BIGSERIAL PRIMARY KEY,
+    goldset_name    TEXT NOT NULL,
+    goldset_version TEXT,
+    backend         TEXT NOT NULL DEFAULT 'local',
+    recall_at_5     REAL,
+    precision_at_5  REAL,
+    mrr_at_5        REAL,
+    fact_accuracy   REAL,
+    red_line_errors INT DEFAULT 0,
+    gate_passed     BOOLEAN,
+    total_cases     INT,
+    hit_cases       INT,
+    detail_json     JSONB NOT NULL,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_eval_report_created ON eval_report (created_at DESC);

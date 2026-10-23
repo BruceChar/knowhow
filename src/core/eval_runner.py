@@ -22,9 +22,10 @@ from src.providers.embedding_provider import get_embedding_provider
 from src.providers.vector_store_provider import get_vector_store
 
 DEFAULT_DSN = "postgresql://rag:rag_dev_2026@localhost:5433/rag"
-GATE_RECALL = 0.6       # 检索层：Recall@5 ≥ 0.6
-GATE_PRECISION = 0.4    # 检索层：Precision@5 ≥ 0.4
-GATE_FACT = 0.7         # 事实层：事实正确率 ≥ 0.7
+GATE_RECALL = 0.9       # 检索层：Recall@5 ≥ 0.9（2026-10-23 从 0.6 提升）
+GATE_PRECISION = 0.15   # 检索层：Precision@5 ≥ 0.15（每 case 单答案时上限 1/5=0.2）
+GATE_MRR = 0.5          # 检索层：MRR@5 ≥ 0.5（理想答案排位质量）
+GATE_FACT = 0.9         # 事实层：事实正确率 ≥ 0.9（2026-10-23 从 0.7 提升）
 GATE_RED_LINE = 0       # 红线层：错误必须 = 0
 
 
@@ -77,22 +78,32 @@ def _hit(qs: list[str], ideal_list: list[str]) -> bool:
 
 def eval_retrieval(cases: list[dict], dsn: str, top_k: int = 5,
                    backend: str | None = None, include_draft: bool = False) -> dict:
-    """逐 case 检索，算 Recall@5 / Precision@5。"""
+    """逐 case 检索，算 Recall@5 / Precision@5 / MRR@5。"""
     hits_all, ideal_all = [], []
     per_case = []
+    mrr_sum = 0.0
     for c in cases:
         ideal = _ideal_list(c)
         hits = retrieve(c["query"], dsn, top_k, backend, include_draft)
         hit_qs = [q for _, _, q in hits]
         hit = _hit(hit_qs, ideal)
+        # MRR：理想答案命中的最高排位倒数
+        rr = 0.0
+        for rank, q in enumerate(hit_qs, start=1):
+            if _norm(q) in {_norm(i) for i in ideal}:
+                rr = 1.0 / rank
+                break
+        mrr_sum += rr
         per_case.append({"case": c["id"], "query": c["query"],
-                         "hit": hit, "top_questions": hit_qs})
+                         "hit": hit, "top_questions": hit_qs, "rr": rr})
         ideal_all.append(ideal[0])
         hits_all.append(hit)
     recall = sum(hits_all) / len(cases) if cases else 0
-    # Precision@5：命中的理想答案数 / 5（每 case 至多 1 个理想答案）
+    # Precision@5：每 case 至多 1 个理想答案，上限 1/top_k（此处 0.2）
     precision = sum(hits_all) / (len(cases) * top_k) if cases else 0
+    mrr = mrr_sum / len(cases) if cases else 0
     return {"recall_at_5": round(recall, 4), "precision_at_5": round(precision, 4),
+            "mrr_at_5": round(mrr, 4),
             "hit_cases": sum(hits_all), "total_cases": len(cases),
             "per_case": per_case}
 
@@ -141,11 +152,12 @@ def run(cases: list[dict], dsn: str, top_k: int = 5,
     gate_passed = (
         retrieval["recall_at_5"] >= GATE_RECALL
         and retrieval["precision_at_5"] >= GATE_PRECISION
+        and retrieval["mrr_at_5"] >= GATE_MRR
         and facts["fact_accuracy"] >= GATE_FACT
         and red_line["passed"]
     )
     return {
-        "name": "评测运行器 v1",
+        "name": "评测运行器 v2",
         "metrics": {
             "retrieval": retrieval,
             "facts": facts,
@@ -153,11 +165,40 @@ def run(cases: list[dict], dsn: str, top_k: int = 5,
         },
         "thresholds": {
             "recall_at_5": GATE_RECALL, "precision_at_5": GATE_PRECISION,
+            "mrr_at_5": GATE_MRR,
             "fact_accuracy": GATE_FACT, "red_line_errors": GATE_RED_LINE,
         },
         "gate_passed": gate_passed,
         "backend": backend or os.environ.get("EMBEDDING_BACKEND", "local"),
     }
+
+
+def save_report(result: dict, goldset_path: str, dsn: str = DEFAULT_DSN) -> int:
+    """评测结果持久化到 eval_report 表，返回报告 id。"""
+    import psycopg
+    m = result["metrics"]
+    name = Path(goldset_path).stem
+    detail = {
+        "goldset_path": goldset_path,
+        "thresholds": result["thresholds"],
+        "per_case": m["retrieval"]["per_case"],
+        "red_line_details": m["red_line"].get("details", []),
+    }
+    with psycopg.connect(dsn) as conn, conn.cursor() as cur:
+        cur.execute("""
+            INSERT INTO eval_report (goldset_name, goldset_version, backend,
+                recall_at_5, precision_at_5, mrr_at_5, fact_accuracy,
+                red_line_errors, gate_passed, total_cases, hit_cases, detail_json)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            RETURNING id
+        """, (name, name, result["backend"],
+              m["retrieval"]["recall_at_5"], m["retrieval"]["precision_at_5"],
+              m["retrieval"]["mrr_at_5"], m["facts"]["fact_accuracy"],
+              m["red_line"]["red_line_errors"], result["gate_passed"],
+              m["retrieval"]["total_cases"], m["retrieval"]["hit_cases"],
+              json.dumps(detail, ensure_ascii=False)))
+        rid = cur.fetchone()[0]
+    return rid
 
 
 if __name__ == "__main__":
@@ -169,11 +210,17 @@ if __name__ == "__main__":
     ap.add_argument("--dev", action="store_true",
                     help="开发模式：检索不过滤 status（数据未走审核流时验证向量质量）")
     ap.add_argument("--json-out", default=None)
+    ap.add_argument("--save-db", action="store_true",
+                    help="评测结果同时写入 eval_report 表（后台可查）")
     a = ap.parse_args()
 
     cases = load_goldset(a.goldset)
     result = run(cases, a.dsn, a.top_k, a.backend, include_draft=a.dev)
     print(json.dumps(result, ensure_ascii=False, indent=2))
+
+    if a.save_db:
+        rid = save_report(result, a.goldset, a.dsn)
+        print(f"\n[评测] 已持久化到 eval_report id={rid}")
 
     if a.json_out:
         Path(a.json_out).parent.mkdir(parents=True, exist_ok=True)

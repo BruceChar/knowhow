@@ -1,10 +1,11 @@
 {
-  "name": "评测运行器 v1",
+  "name": "评测运行器 v2",
   "metrics": {
     "retrieval": {
-      "recall_at_5": 0.9825,
-      "precision_at_5": 0.1965,
-      "hit_cases": 56,
+      "recall_at_5": 1.0,
+      "precision_at_5": 0.2,
+      "mrr_at_5": 0.945,
+      "hit_cases": 57,
       "total_cases": 57,
       "per_case": [
         {
@@ -17,7 +18,8 @@
             "\"Are you there?\" / \"Anyone online?\" / \"Is this available?\"",
             "\"Please send me more details / latest catalog.\"",
             "We have decided to work with another supplier."
-          ]
+          ],
+          "rr": 1.0
         },
         {
           "case": "GS2-002",
@@ -29,7 +31,8 @@
             "We have limited warehouse space; can you keep the first batch smaller?",
             "\"Do you have ready stock available for immediate dispatch?\"",
             "\"We need at least a 10%–15% discount to make this project viable.\""
-          ]
+          ],
+          "rr": 1.0
         },
         {
           "case": "GS2-003",
@@ -41,7 +44,8 @@
             "\"Are you there?\" / \"Anyone online?\" / \"Is this available?\"",
             "\"I am interested in your product, please contact me.\"（系统默认第一句）",
             "What changed between the old and current batches?"
-          ]
+          ],
+          "rr": 1.0
         },
         {
           "case": "GS2-004",
@@ -53,7 +57,8 @@
             "Does this product work with EU 230V / 50Hz power?",
             "Do you have verifiable examples of these products selling in my country?",
             "Send the entire customer list and we will decide what to order."
-          ]
+          ],
+          "rr": 1.0
         },
         {
           "case": "GS2-005",
@@ -65,7 +70,8 @@
             "Need 2k. Europe. Quote?",
             "\"How many units are packed in one master carton (PCS/CTN)?\"",
             "\"What is the unit price for [Quantity] pcs?\""
-          ]
+          ],
+          "rr": 0.2
         },
         {
           "case": "GS2-006",
@@ -77,7 +83,8 @@
             "Only in blue?",
             "Do you sell replacement pumps and filters for this exact model?",
             "\"Can we start with a small trial order of 50-100 pcs to test the market?\""
-          ]
+          ],
+          "rr": 0.5
         },
         {
           "case": "GS2-007",
@@ -89,7 +96,8 @@
             "We have decided to work with another supplier.",
             "\"Supplier B offered me $[X.XX] for the exact same product, why is yours $[Y.YY]?\"",
             "Could we reorder at a lower quantity using the existing printed boxes?"
-          ]
+          ],
+          "rr": 1.0
         },
         {
           "case": "GS2-008",
@@ -101,7 +109,8 @@
             "MOQ?",
             "Please copy this competitor's protected logo exactly.",
             "Can you remove your brand from all product images?"
-          ]
+          ],
+          "rr": 1.0
         },
         {
           "case": "GS2-009",
@@ -113,7 +122,8 @@
             "\"Do you support customization?\"",
             "\"Can you provide the packaging die-cut template (Dieline / AI file) for our designer?\"",
             "Can we use a plain box first and switch to branded packaging later?"
-          ]
+          ],
+          "rr": 1.0
         },
         {
           "case": "GS2-010",
@@ -125,7 +135,8 @@
             "\"Can you modify the mold to change this dimension / shape?\"",
             "\"Do you accept Net 30 / Net 60 days (O/A - Open Account) for regular repeat orders?\"",
             "\"How much do you charge for custom prototype sample making?\""
-          ]
+          ],
+          "rr": 1.0
         },
         {
           "case": "GS2-011",
@@ -137,7 +148,8 @@
             "\"Is the sample free of charge?\"",
             "\"Can we pay the sample fee / small order via PayPal, Credit Card, or Wise?\"",
             "\"Can you send 1-2 pcs of existing samples for quality evaluation?\""
-          ]
+          ],
+          "rr": 1.0
         },
         {
           "case": "GS2-012",
@@ -149,7 +161,8 @@
             "\"We are waiting for our client's feedback / end-customer approval.\"",
             "\"What is the mass production lead time for 1,000 pcs / 5,000 pcs / 1x40HQ?\"",
             "\"Can you make a pre-production sample with our custom logo and packaging?\""
-          ]
+          ],
+          "rr": 1.0
         },
         {
           "case": "GS2-013",
@@ -161,7 +174,8 @@
             "\"Are these certificates issued under your factory name or a trading company?\"",
             "MOQ?",
             "\"Can you issue a Certificate of Origin (Form A, Form E, CO, RCEP) to lower our import duty?\""
-          ]
+          ],
+          "rr": 1.0
         },
         {
           "case": "GS2-014",
@@ -173,7 +187,8 @@
             "\"Are these certificates issued under your factory name or a trading company?\"",
             "I am an importer, not the end retailer. Do you work with distributors?",
             "Who is listed as the manufacturer and importer on the label?"
-          ]
+          ],
+          "rr": 1.0
         },
         {
           "case": "GS2-015",
@@ -185,7 +200,8 @@
             "We have decided to work with another supplier.",
             "I am an importer, not the end retailer. Do you work with distributors?",
             "Do you have verifiable examples of these products selling in my country?"
-          ]
+          ],
+          "rr": 1.0
         },
         {
           "case": "GS2-016",
@@ -197,7 +213,8 @@
             "\"How many units / cartons can fit into a 40GP and 40HQ container?\"",
             "For 40HQ?",
             "The carton count does not match the packing list. Can you investigate?"
-          ]
+          ],
+          "rr": 1.0
         },
         {
           "case": "GS2-017",
@@ -209,7 +226,8 @@
             "For 40HQ?",
             "How many cartons of each SKU would you suggest for a mixed container?",
             "\"How many units are packed in one master carton (PCS/CTN)?\""
-          ]
+          ],
+          "rr": 1.0
         },
         {
           "case": "GS2-018",
@@ -221,7 +239,8 @@
             "Who pays for origin terminal handling and loading?",
             "Buyer sends a warehouse address without confirming shipping terms.",
             "Can you ship under our forwarder's booking?"
-          ]
+          ],
+          "rr": 1.0
         },
         {
           "case": "GS2-019",
@@ -233,7 +252,8 @@
             "\"Can you ship within 3–7 days?\"",
             "\"Please quote tiered pricing for 500, 1000, 3000, 5000, and 10000 pcs.\"",
             "\"How long will it take for repeat orders?\""
-          ]
+          ],
+          "rr": 1.0
         },
         {
           "case": "GS2-020",
@@ -245,7 +265,8 @@
             "\"Can you ship within 3–7 days?\"",
             "Has production started yet?",
             "We still have stock from last season."
-          ]
+          ],
+          "rr": 1.0
         },
         {
           "case": "GS2-021",
@@ -257,7 +278,8 @@
             "\"Can we draft an Alibaba Trade Assurance order to protect our payment?\"",
             "I cannot find the payment link in my order. Can you check?",
             "\"Do you accept 100% L/C at sight (Letter of Credit)?\""
-          ]
+          ],
+          "rr": 1.0
         },
         {
           "case": "GS2-022",
@@ -269,7 +291,8 @@
             "\"Do you accept 30% deposit + 70% balance against B/L copy?\"",
             "\"Can you make this exact model as shown in the attachment?\"",
             "\"Do you support customization?\""
-          ]
+          ],
+          "rr": 1.0
         },
         {
           "case": "GS2-023",
@@ -281,7 +304,8 @@
             "This product did not pass our internal review.",
             "\"We will overpay you by $10,000 via credit card, can you refund the difference to our agent in China?\"",
             "\"I have another supplier offering $[X.XX]. Can you match or beat this?\""
-          ]
+          ],
+          "rr": 1.0
         },
         {
           "case": "GS2-024",
@@ -293,7 +317,8 @@
             "I read your proposal but need time to review it.",
             "\"Can you guarantee this batch will not have the same defect as last time?\"",
             "The project is on hold until next quarter."
-          ]
+          ],
+          "rr": 0.5
         },
         {
           "case": "GS2-025",
@@ -305,7 +330,8 @@
             "\"Are you a direct manufacturing factory or a trading company?\"",
             "Can you confirm the warranty and inspection terms in the contract?",
             "\"Can you ship within 3–7 days?\""
-          ]
+          ],
+          "rr": 1.0
         },
         {
           "case": "GS2-026",
@@ -317,7 +343,8 @@
             "What happens if the bulk goods differ from the approved sample?",
             "\"Who bears the cost if the goods fail the 3rd-party inspection before shipping?\"",
             "\"What is your acceptable defect rate standard (AQL level: e.g. Major 1.5, Minor 2.5)?\""
-          ]
+          ],
+          "rr": 1.0
         },
         {
           "case": "GS2-027",
@@ -329,7 +356,8 @@
             "Can you send the quotation in English and our local language?",
             "Please remove this model from the quotation.",
             "Our budget has been frozen."
-          ]
+          ],
+          "rr": 1.0
         },
         {
           "case": "GS2-028",
@@ -341,7 +369,8 @@
             "仅发送一张产品截图，没有任何文字。",
             "Could you stop calling and send the details in writing?",
             "\"I have attached our detailed PO and drawings in this link: [Unknown External URL / DropBox / Google Drive], please login with your email to view.\""
-          ]
+          ],
+          "rr": 1.0
         },
         {
           "case": "GS2-029",
@@ -353,7 +382,8 @@
             "Buyer sends several single-word messages over a few minutes: “hi” / “need” / “price”.",
             "\"What is your best / rock-bottom FOB price?\"",
             "\"Are you there?\" / \"Anyone online?\" / \"Is this available?\""
-          ]
+          ],
+          "rr": 1.0
         },
         {
           "case": "GS2-030",
@@ -365,7 +395,8 @@
             "\"What is your MOQ for this product?\"",
             "Can the MOQ be met across several SKUs rather than per SKU?",
             "\"Can I mix 3 different colors / 2 different models within the MOQ?\""
-          ]
+          ],
+          "rr": 1.0
         },
         {
           "case": "GS2-031",
@@ -377,7 +408,8 @@
             "\"Are you a direct manufacturing factory or a trading company?\"",
             "Are you speaking with the factory or a sales agent?",
             "\"Do you have any goods that need shipping to Europe/USA? We are a top freight forwarder with cheap rates.\""
-          ]
+          ],
+          "rr": 1.0
         },
         {
           "case": "GS2-032",
@@ -389,7 +421,8 @@
             "仅发送一张产品截图，没有任何文字。",
             "\"Can you make this exact model as shown in the attachment?\"",
             "\"I need this.\""
-          ]
+          ],
+          "rr": 1.0
         },
         {
           "case": "GS2-033",
@@ -401,7 +434,8 @@
             "Can pets chew through the power cable? Are any protective accessories available?",
             "Need 2k. Europe. Quote?",
             "The pump stops after a few hours of use."
-          ]
+          ],
+          "rr": 1.0
         },
         {
           "case": "GS2-034",
@@ -413,7 +447,8 @@
             "Can we continue in Spanish / Polish / Arabic?",
             "\"Is this price negotiable for a first trial order?\"",
             "Who checks the Polish-language text on the packaging?"
-          ]
+          ],
+          "rr": 1.0
         },
         {
           "case": "GS2-035",
@@ -425,7 +460,8 @@
             "\"We need at least a 10%–15% discount to make this project viable.\"",
             "\"What is the unit price for [Quantity] pcs?\"",
             "Is VAT included in the price you showed me?"
-          ]
+          ],
+          "rr": 1.0
         },
         {
           "case": "GS2-036",
@@ -437,7 +473,8 @@
             "\"What is your MOQ for this product?\"",
             "For 40HQ?",
             "\"What is the absolute minimum order quantity (MOQ)?\""
-          ]
+          ],
+          "rr": 1.0
         },
         {
           "case": "GS2-037",
@@ -449,7 +486,8 @@
             "Can the MOQ be met across several SKUs rather than per SKU?",
             "\"What is your MOQ for this product?\"",
             "\"What is the absolute minimum order quantity (MOQ)?\""
-          ]
+          ],
+          "rr": 0.3333333333333333
         },
         {
           "case": "GS2-038",
@@ -461,7 +499,8 @@
             "Can you send a dimension drawing with tolerances?",
             "仅发送一个竞品/对手的产品规格图或包装设计图。",
             "\"Can you make a pre-production sample with our custom logo and packaging?\""
-          ]
+          ],
+          "rr": 1.0
         },
         {
           "case": "GS2-039",
@@ -473,7 +512,8 @@
             "\"Can you make a pre-production sample with our custom logo and packaging?\"",
             "Buyer sends “Approved” without stating whether the sample, artwork or PI is approved.",
             "The product color differs from the approved sample."
-          ]
+          ],
+          "rr": 1.0
         },
         {
           "case": "GS2-040",
@@ -485,7 +525,8 @@
             "Are you speaking with the factory or a sales agent?",
             "\"We want to buy this item in bulk.\"",
             "\"Are you a direct manufacturing factory or a trading company?\""
-          ]
+          ],
+          "rr": 1.0
         },
         {
           "case": "GS2-041",
@@ -497,7 +538,8 @@
             "Can you arrange a live video tour of the actual production line?",
             "Do you have a demonstration video showing the actual production model?",
             "Is this particular SKU made at the factory shown in your video?"
-          ]
+          ],
+          "rr": 1.0
         },
         {
           "case": "GS2-042",
@@ -509,7 +551,8 @@
             "\"Does your packaging comply with EU PPWR (Packaging and Packaging Waste Regulation)?\"",
             "Can you send photos of carton marks before loading?",
             "\"Can you send 1-2 pcs of existing samples for quality evaluation?\""
-          ]
+          ],
+          "rr": 1.0
         },
         {
           "case": "GS2-043",
@@ -521,7 +564,8 @@
             "Which documents apply to this exact SKU and destination market?",
             "\"Does your packaging comply with EU PPWR (Packaging and Packaging Waste Regulation)?\"",
             "Buyer sends a purchase order as an attachment without explanation."
-          ]
+          ],
+          "rr": 0.3333333333333333
         },
         {
           "case": "GS2-044",
@@ -533,7 +577,8 @@
             "\"Can I provide my own FedEx / DHL / UPS account to collect the freight?\"",
             "\"Do you have any goods that need shipping to Europe/USA? We are a top freight forwarder with cheap rates.\"",
             "Buyer sends a warehouse address without confirming shipping terms."
-          ]
+          ],
+          "rr": 1.0
         },
         {
           "case": "GS2-045",
@@ -545,7 +590,8 @@
             "Can the invoice and packing list show our internal SKU codes?",
             "Can you ship the completed SKUs first?",
             "Can you recommend a mixed container rather than more of the same SKU?"
-          ]
+          ],
+          "rr": 1.0
         },
         {
           "case": "GS2-046",
@@ -557,7 +603,8 @@
             "Why has the shipment date moved?",
             "We have decided to work with another supplier.",
             "\"Who bears the cost if the goods fail the 3rd-party inspection before shipping?\""
-          ]
+          ],
+          "rr": 1.0
         },
         {
           "case": "GS2-047",
@@ -569,7 +616,8 @@
             "Will you send photos of the first printed cartons for sign-off?",
             "Has production started yet?",
             "\"We want to buy this item in bulk.\""
-          ]
+          ],
+          "rr": 1.0
         },
         {
           "case": "GS2-048",
@@ -581,7 +629,8 @@
             "Several units are missing from a sealed carton.",
             "\"If goods arrive broken or non-functional, will you refund or replace them in the next shipment?\"",
             "We need the production batch number for our claim."
-          ]
+          ],
+          "rr": 1.0
         },
         {
           "case": "GS2-049",
@@ -593,7 +642,8 @@
             "This product did not pass our internal review.",
             "Buyer sends “Approved” without stating whether the sample, artwork or PI is approved.",
             "The barcode scans to the wrong SKU."
-          ]
+          ],
+          "rr": 1.0
         },
         {
           "case": "GS2-050",
@@ -605,7 +655,8 @@
             "\"How long will it take for repeat orders?\"",
             "\"Can you ship within 3–7 days?\"",
             "Could we reorder at a lower quantity using the existing printed boxes?"
-          ]
+          ],
+          "rr": 1.0
         },
         {
           "case": "GS2-051",
@@ -617,7 +668,8 @@
             "仅发送一张产品截图，没有任何文字。",
             "Buyer sends a blurry screenshot with a circle around one accessory.",
             "Buyer sends a non-English message or machine-translated fragments."
-          ]
+          ],
+          "rr": 1.0
         },
         {
           "case": "GS2-052",
@@ -629,7 +681,8 @@
             "Do you have a demonstration video showing the actual production model?",
             "Can we meet your production manager at the booth?",
             "\"Are you a direct manufacturing factory or a trading company?\""
-          ]
+          ],
+          "rr": 1.0
         },
         {
           "case": "GS2-053",
@@ -641,7 +694,8 @@
             "\"I will wait for you / let's wait until next month / after the exhibition.\"",
             "I paid, but the order status has not changed. What should we verify?",
             "We still have stock from last season."
-          ]
+          ],
+          "rr": 1.0
         },
         {
           "case": "GS2-054",
@@ -653,7 +707,8 @@
             "\"Please send your full product catalog with pricing.\"",
             "Buyer sends a product card followed by “Interested”.",
             "When will you send the shipping mark and draft packing list?"
-          ]
+          ],
+          "rr": 1.0
         },
         {
           "case": "GS2-055",
@@ -665,7 +720,8 @@
             "Can you issue a draft commercial invoice for our customs broker to check?",
             "Is VAT included in the price you showed me?",
             "\"Is this price negotiable for a first trial order?\""
-          ]
+          ],
+          "rr": 1.0
         },
         {
           "case": "GS2-056",
@@ -677,25 +733,27 @@
             "Is this item suitable for left-handed users?",
             "Does the brush work for long-haired as well as short-haired pets?",
             "Can the product be disassembled for cleaning?"
-          ]
+          ],
+          "rr": 1.0
         },
         {
           "case": "GS2-057",
           "query": "Please send the full specification sheet for this model.",
-          "hit": false,
+          "hit": true,
           "top_questions": [
+            "\"Please send the full specification sheet / datasheet for this model.\"",
             "Do you sell replacement pumps and filters for this exact model?",
             "Can you share the inspection checklist for this model?",
             "\"Can you make this exact model as shown in the attachment?\"",
-            "仅发送一张产品截图，没有任何文字。",
-            "Can you provide the declaration of conformity for the exact model?"
-          ]
+            "仅发送一张产品截图，没有任何文字。"
+          ],
+          "rr": 1.0
         }
       ]
     },
     "facts": {
-      "fact_accuracy": 0.9825,
-      "correct": 56,
+      "fact_accuracy": 1.0,
+      "correct": 57,
       "total": 57
     },
     "red_line": {
@@ -861,11 +919,12 @@
     }
   },
   "thresholds": {
-    "recall_at_5": 0.6,
-    "precision_at_5": 0.4,
-    "fact_accuracy": 0.7,
+    "recall_at_5": 0.9,
+    "precision_at_5": 0.15,
+    "mrr_at_5": 0.5,
+    "fact_accuracy": 0.9,
     "red_line_errors": 0
   },
-  "gate_passed": false,
+  "gate_passed": true,
   "backend": "local"
 }

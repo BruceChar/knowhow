@@ -16,12 +16,40 @@ import os
 
 import psycopg
 from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from src.auth.rbac import User, data_permission_clause, get_current_user, require_role
 
 DSN = os.environ.get("RAG_DSN", "postgresql://rag:rag_dev_2026@localhost:5433/rag")
 app = FastAPI(title="企业知识库管理台", version="0.1")
+
+# 静态资源：评测审计面板
+import pathlib
+_static_dir = pathlib.Path(__file__).resolve().parent / "static"
+app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
+
+
+@app.get("/admin", include_in_schema=False)
+def admin_panel():
+    """后台管理端评测审计面板（单页 HTML）。"""
+    from fastapi.responses import FileResponse
+    return FileResponse(str(_static_dir / "admin.html"))
+
+# 模型预热：服务启动时加载 embedding 模型，评测/检索复用，避免每次冷启动 9s+
+_embedding_provider = None
+
+
+@app.on_event("startup")
+def _warmup():
+    global _embedding_provider
+    try:
+        from src.providers.embedding_provider import get_embedding_provider
+        _embedding_provider = get_embedding_provider()
+        # 预热：编码一条空文本触发真实加载
+        _embedding_provider.embed(["warmup"])
+    except Exception as e:  # 模型加载失败不阻塞启动（评测时再报）
+        print(f"[warmup] embedding 预热失败（评测时重试）: {e}")
 
 
 def _conn():
@@ -189,3 +217,87 @@ def list_batches(user: User = Depends(require_role("reviewer"))):
 @app.get("/health")
 def health():
     return {"status": "ok", "service": "admin-api"}
+
+
+# ============ 评测与召回审计（reviewer 以上） ============
+
+GOLDSET_PATH = os.environ.get("GOLDSET_PATH",
+                              "data/goldset/jiacong_faq_goldset_v2.json")
+
+
+@app.post("/eval/run")
+def run_eval(dev: bool = True,
+             user: User = Depends(require_role("reviewer"))):
+    """触发一次评测（默认 dev 模式：检索不过滤审核状态），结果持久化 eval_report。"""
+    from src.core import eval_runner
+    cases = eval_runner.load_goldset(GOLDSET_PATH)
+    result = eval_runner.run(cases, DSN, include_draft=dev)
+    rid = eval_runner.save_report(result, GOLDSET_PATH, DSN)
+    return {"report_id": rid, "gate_passed": result["gate_passed"],
+            "metrics": {k: v for k, v in result["metrics"].items()
+                        if k != "retrieval"},
+            "retrieval": {k: v for k, v in result["metrics"]["retrieval"].items()
+                          if k != "per_case"}}
+
+
+@app.get("/eval/reports")
+def list_eval_reports(limit: int = Query(default=20, le=100),
+                      user: User = Depends(require_role("reviewer"))):
+    """评测历史（趋势看板数据）。"""
+    with _conn() as conn, conn.cursor() as cur:
+        cur.execute("""
+            SELECT id, goldset_name, backend, recall_at_5, precision_at_5,
+                   mrr_at_5, fact_accuracy, red_line_errors, gate_passed,
+                   total_cases, hit_cases, created_at
+            FROM eval_report ORDER BY id DESC LIMIT %s
+        """, (limit,))
+        rows = cur.fetchall()
+    cols = ["id", "goldset_name", "backend", "recall_at_5", "precision_at_5",
+            "mrr_at_5", "fact_accuracy", "red_line_errors", "gate_passed",
+            "total_cases", "hit_cases", "created_at"]
+    return [dict(zip(cols, r)) for r in rows]
+
+
+@app.get("/eval/reports/{report_id}")
+def get_eval_report(report_id: int,
+                    user: User = Depends(require_role("reviewer"))):
+    """报告明细：含 per-case 召回审计（query/hit/top5/rr）与红线详情。"""
+    with _conn() as conn, conn.cursor() as cur:
+        cur.execute("""
+            SELECT id, goldset_name, backend, recall_at_5, precision_at_5,
+                   mrr_at_5, fact_accuracy, red_line_errors, gate_passed,
+                   total_cases, hit_cases, detail_json, created_at
+            FROM eval_report WHERE id=%s
+        """, (report_id,))
+        row = cur.fetchone()
+    if not row:
+        raise HTTPException(404, "评测报告不存在")
+    cols = ["id", "goldset_name", "backend", "recall_at_5", "precision_at_5",
+            "mrr_at_5", "fact_accuracy", "red_line_errors", "gate_passed",
+            "total_cases", "hit_cases", "detail_json", "created_at"]
+    d = dict(zip(cols, row))
+    d["detail"] = d.pop("detail_json")
+    return d
+
+
+@app.get("/audit-log")
+def list_audit_log(limit: int = Query(default=50, le=200),
+                   decision: str | None = None,
+                   user: User = Depends(require_role("reviewer"))):
+    """问答审计：每次客服交互的检索决策、引用、耗时。"""
+    where, params = [], []
+    if decision:
+        where.append("decision = %s"); params.append(decision)
+    sql = f"""
+        SELECT inquiry_id, channel, question, answer, citations, action_level,
+               decision, latency_ms, model, created_at
+        FROM audit_log {'WHERE ' + ' AND '.join(where) if where else ''}
+        ORDER BY id DESC LIMIT %s
+    """
+    params.append(limit)
+    with _conn() as conn, conn.cursor() as cur:
+        cur.execute(sql, params)
+        rows = cur.fetchall()
+    cols = ["inquiry_id", "channel", "question", "answer", "citations",
+            "action_level", "decision", "latency_ms", "model", "created_at"]
+    return [dict(zip(cols, r)) for r in rows]
