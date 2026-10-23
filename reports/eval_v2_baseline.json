@@ -1,0 +1,871 @@
+{
+  "name": "评测运行器 v1",
+  "metrics": {
+    "retrieval": {
+      "recall_at_5": 0.9474,
+      "precision_at_5": 0.1895,
+      "hit_cases": 54,
+      "total_cases": 57,
+      "per_case": [
+        {
+          "case": "GS2-001",
+          "query": "Hi, I saw your products online and want to know more about your company, can you tell me what you sell?",
+          "hit": true,
+          "top_questions": [
+            "\"I am interested in your product, please contact me.\"（系统默认第一句）",
+            "Buyer sends a non-English message or machine-translated fragments.",
+            "\"Are you there?\" / \"Anyone online?\" / \"Is this available?\"",
+            "\"Please send me more details / latest catalog.\"",
+            "We have decided to work with another supplier."
+          ]
+        },
+        {
+          "case": "GS2-002",
+          "query": "What is the minimum order quantity for your products?",
+          "hit": false,
+          "top_questions": [
+            "\"What is the absolute minimum order quantity (MOQ)?\"",
+            "\"We want to buy this item in bulk.\"",
+            "We have limited warehouse space; can you keep the first batch smaller?",
+            "\"Do you have ready stock available for immediate dispatch?\"",
+            "\"We need at least a 10%–15% discount to make this project viable.\""
+          ]
+        },
+        {
+          "case": "GS2-003",
+          "query": "Do you have a product brochure or catalog in PDF for this year's new collection?",
+          "hit": true,
+          "top_questions": [
+            "\"Do you have a PDF catalog for all 2026 new arrivals?\"",
+            "\"Please send me more details / latest catalog.\"",
+            "\"Are you there?\" / \"Anyone online?\" / \"Is this available?\"",
+            "\"I am interested in your product, please contact me.\"（系统默认第一句）",
+            "What changed between the old and current batches?"
+          ]
+        },
+        {
+          "case": "GS2-004",
+          "query": "Which models sell the most in Europe or America? Give me your top sellers.",
+          "hit": true,
+          "top_questions": [
+            "\"Which items are your top 5 best-sellers in the US / European market?\"",
+            "Need 2k. Europe. Quote?",
+            "Does this product work with EU 230V / 50Hz power?",
+            "Do you have verifiable examples of these products selling in my country?",
+            "Send the entire customer list and we will decide what to order."
+          ]
+        },
+        {
+          "case": "GS2-005",
+          "query": "How much for 1000 pieces? Please give me the unit price.",
+          "hit": true,
+          "top_questions": [
+            "Price?",
+            "Is the quoted price for one unit, one set or one carton?",
+            "Need 2k. Europe. Quote?",
+            "\"How many units are packed in one master carton (PCS/CTN)?\"",
+            "\"What is the unit price for [Quantity] pcs?\""
+          ]
+        },
+        {
+          "case": "GS2-006",
+          "query": "你们最低起订量是多少？可以混合型号吗",
+          "hit": true,
+          "top_questions": [
+            "We have limited warehouse space; can you keep the first batch smaller?",
+            "\"What is the absolute minimum order quantity (MOQ)?\"",
+            "Only in blue?",
+            "Do you sell replacement pumps and filters for this exact model?",
+            "\"Can we start with a small trial order of 50-100 pcs to test the market?\""
+          ]
+        },
+        {
+          "case": "GS2-007",
+          "query": "Another factory quoted me a lower price for the same thing, can you match it?",
+          "hit": true,
+          "top_questions": [
+            "\"I have another supplier offering $[X.XX]. Can you match or beat this?\"",
+            "Buyer sends a competitor quote with prices blacked out.",
+            "We have decided to work with another supplier.",
+            "\"Supplier B offered me $[X.XX] for the exact same product, why is yours $[Y.YY]?\"",
+            "Could we reorder at a lower quantity using the existing printed boxes?"
+          ]
+        },
+        {
+          "case": "GS2-008",
+          "query": "Can we put our own brand logo on your products?",
+          "hit": true,
+          "top_questions": [
+            "\"Can we put our own private brand logo on the product?\"",
+            "\"Do you support customization?\"",
+            "MOQ?",
+            "Please copy this competitor's protected logo exactly.",
+            "Can you remove your brand from all product images?"
+          ]
+        },
+        {
+          "case": "GS2-009",
+          "query": "你们能做彩盒包装吗？我们想要品牌定制包装",
+          "hit": true,
+          "top_questions": [
+            "\"Can you provide custom packaging (color box, blister card, mail-order box, kraft box)?\"",
+            "仅发送一个竞品/对手的产品规格图或包装设计图。",
+            "\"Do you support customization?\"",
+            "\"Can you provide the packaging die-cut template (Dieline / AI file) for our designer?\"",
+            "Can we use a plain box first and switch to branded packaging later?"
+          ]
+        },
+        {
+          "case": "GS2-010",
+          "query": "How much is the mold cost and how long to open a new mold?",
+          "hit": true,
+          "top_questions": [
+            "\"What is the tooling / mold cost for an exclusive design, and what is the mold opening lead time?\"",
+            "\"Will you refund the mold cost once our total order quantity reaches [X] pcs?\"",
+            "\"Can you modify the mold to change this dimension / shape?\"",
+            "\"Do you accept Net 30 / Net 60 days (O/A - Open Account) for regular repeat orders?\"",
+            "\"How much do you charge for custom prototype sample making?\""
+          ]
+        },
+        {
+          "case": "GS2-011",
+          "query": "Do you charge for samples? Can the fee be refunded when we place a bulk order?",
+          "hit": true,
+          "top_questions": [
+            "\"What is the sample fee, and can it be deducted from the bulk order?\"",
+            "\"Can you send me a sample?\"",
+            "\"Is the sample free of charge?\"",
+            "\"Can we pay the sample fee / small order via PayPal, Credit Card, or Wise?\"",
+            "\"Can you send 1-2 pcs of existing samples for quality evaluation?\""
+          ]
+        },
+        {
+          "case": "GS2-012",
+          "query": "How long does it take to make a customized sample?",
+          "hit": true,
+          "top_questions": [
+            "\"How many days does it take to finish a custom sample?\"",
+            "\"Can you ship within 3–7 days?\"",
+            "\"We are waiting for our client's feedback / end-customer approval.\"",
+            "\"What is the mass production lead time for 1,000 pcs / 5,000 pcs / 1x40HQ?\"",
+            "\"Can you make a pre-production sample with our custom logo and packaging?\""
+          ]
+        },
+        {
+          "case": "GS2-013",
+          "query": "Do you have CE and RoHS certificates for this item?",
+          "hit": true,
+          "top_questions": [
+            "\"Do you have CE, RoHS, REACH, FCC, FDA, UKCA, or UL certificates for this item?\"",
+            "\"Do you have BSCI, SEDEX/SMETA, ISO 9001, or WCA factory audit reports?\"",
+            "\"Are these certificates issued under your factory name or a trading company?\"",
+            "MOQ?",
+            "\"Can you issue a Certificate of Origin (Form A, Form E, CO, RCEP) to lower our import duty?\""
+          ]
+        },
+        {
+          "case": "GS2-014",
+          "query": "Are you a real factory or just a trading company?",
+          "hit": true,
+          "top_questions": [
+            "\"Are you a direct manufacturing factory or a trading company?\"",
+            "Are you speaking with the factory or a sales agent?",
+            "\"Are these certificates issued under your factory name or a trading company?\"",
+            "I am an importer, not the end retailer. Do you work with distributors?",
+            "Who is listed as the manufacturer and importer on the label?"
+          ]
+        },
+        {
+          "case": "GS2-015",
+          "query": "Which big brands or retailers have you worked with before?",
+          "hit": true,
+          "top_questions": [
+            "\"Which big brands, supermarkets, or major retailers have you supplied before?\"",
+            "\"Do you have experience exporting to Walmart, Target, Costco, Carrefour, or MINISO?\"",
+            "We have decided to work with another supplier.",
+            "I am an importer, not the end retailer. Do you work with distributors?",
+            "Do you have verifiable examples of these products selling in my country?"
+          ]
+        },
+        {
+          "case": "GS2-016",
+          "query": "What is the carton size? L x W x H in cm please.",
+          "hit": true,
+          "top_questions": [
+            "\"What are the master carton dimensions (L × W × H in cm / inches)?\"",
+            "\"Can you provide pallet specifications (pallet size, cartons per pallet, pallet height)?\"",
+            "\"How many units / cartons can fit into a 40GP and 40HQ container?\"",
+            "For 40HQ?",
+            "The carton count does not match the packing list. Can you investigate?"
+          ]
+        },
+        {
+          "case": "GS2-017",
+          "query": "How many cartons fit into one 20GP container?",
+          "hit": true,
+          "top_questions": [
+            "\"How many units / cartons can fit into a 20GP container?\"",
+            "\"How many units / cartons can fit into a 40GP and 40HQ container?\"",
+            "For 40HQ?",
+            "How many cartons of each SKU would you suggest for a mixed container?",
+            "\"How many units are packed in one master carton (PCS/CTN)?\""
+          ]
+        },
+        {
+          "case": "GS2-018",
+          "query": "Which port do you ship from?",
+          "hit": true,
+          "top_questions": [
+            "\"What is your nearest loading port? (e.g. Ningbo, Shanghai, Shenzhen, Qingdao)\"",
+            "\"Can you quote CIF [Port Name] / CFR [Port Name]?\"",
+            "Who pays for origin terminal handling and loading?",
+            "Buyer sends a warehouse address without confirming shipping terms.",
+            "Can you ship under our forwarder's booking?"
+          ]
+        },
+        {
+          "case": "GS2-019",
+          "query": "How long is your production lead time for 5000 pieces?",
+          "hit": true,
+          "top_questions": [
+            "\"What is the mass production lead time for 1,000 pcs / 5,000 pcs / 1x40HQ?\"",
+            "The first batch sold well. What is the reorder lead time?",
+            "\"Can you ship within 3–7 days?\"",
+            "\"Please quote tiered pricing for 500, 1000, 3000, 5000, and 10000 pcs.\"",
+            "\"How long will it take for repeat orders?\""
+          ]
+        },
+        {
+          "case": "GS2-020",
+          "query": "Do you have ready stock right now that can ship immediately?",
+          "hit": true,
+          "top_questions": [
+            "\"Do you have ready stock available for immediate dispatch?\"",
+            "We have limited warehouse space; can you keep the first batch smaller?",
+            "\"Can you ship within 3–7 days?\"",
+            "Has production started yet?",
+            "We still have stock from last season."
+          ]
+        },
+        {
+          "case": "GS2-021",
+          "query": "What are your payment terms?",
+          "hit": true,
+          "top_questions": [
+            "\"What are your standard payment terms?\"",
+            "\"Do you accept Net 30 / Net 60 days (O/A - Open Account) for regular repeat orders?\"",
+            "\"Can we draft an Alibaba Trade Assurance order to protect our payment?\"",
+            "I cannot find the payment link in my order. Can you check?",
+            "\"Do you accept 100% L/C at sight (Letter of Credit)?\""
+          ]
+        },
+        {
+          "case": "GS2-022",
+          "query": "Can we do 100% L/C at sight?",
+          "hit": true,
+          "top_questions": [
+            "\"Do you accept 100% L/C at sight (Letter of Credit)?\"",
+            "\"Can we pay 100% after inspection before shipment?\"",
+            "\"Do you accept 30% deposit + 70% balance against B/L copy?\"",
+            "\"Can you make this exact model as shown in the attachment?\"",
+            "\"Do you support customization?\""
+          ]
+        },
+        {
+          "case": "GS2-023",
+          "query": "Your price is much higher than our budget, can you do better?",
+          "hit": true,
+          "top_questions": [
+            "\"Your price is too high / too expensive compared to our budget.\"",
+            "We have decided to work with another supplier.",
+            "This product did not pass our internal review.",
+            "\"We will overpay you by $10,000 via credit card, can you refund the difference to our agent in China?\"",
+            "\"I have another supplier offering $[X.XX]. Can you match or beat this?\""
+          ]
+        },
+        {
+          "case": "GS2-024",
+          "query": "I need to check with my boss first before deciding.",
+          "hit": true,
+          "top_questions": [
+            "We have decided to work with another supplier.",
+            "\"I need to discuss this with my boss / purchasing committee / partner.\"",
+            "I read your proposal but need time to review it.",
+            "\"Can you guarantee this batch will not have the same defect as last time?\"",
+            "The project is on hold until next quarter."
+          ]
+        },
+        {
+          "case": "GS2-025",
+          "query": "What is the warranty period for your products?",
+          "hit": true,
+          "top_questions": [
+            "\"What is your warranty period? (1 year, 2 years?)\"",
+            "Does the product come with a warranty card or local-language insert?",
+            "\"Are you a direct manufacturing factory or a trading company?\"",
+            "Can you confirm the warranty and inspection terms in the contract?",
+            "\"Can you ship within 3–7 days?\""
+          ]
+        },
+        {
+          "case": "GS2-026",
+          "query": "What happens if more than 2% of the goods are defective?",
+          "hit": true,
+          "top_questions": [
+            "\"What is your compensation policy if the defect rate exceeds 2%?\"",
+            "\"If goods arrive broken or non-functional, will you refund or replace them in the next shipment?\"",
+            "What happens if the bulk goods differ from the approved sample?",
+            "\"Who bears the cost if the goods fail the 3rd-party inspection before shipping?\"",
+            "\"What is your acceptable defect rate standard (AQL level: e.g. Major 1.5, Minor 2.5)?\""
+          ]
+        },
+        {
+          "case": "GS2-027",
+          "query": "Please send the quotation directly to my personal gmail.",
+          "hit": true,
+          "top_questions": [
+            "\"Send your quote directly to my personal Gmail: xxx@gmail.com.\"",
+            "Buyer reads the quotation and sends only “Noted”.",
+            "Can you send the quotation in English and our local language?",
+            "Please remove this model from the quotation.",
+            "Our budget has been frozen."
+          ]
+        },
+        {
+          "case": "GS2-028",
+          "query": "I don't use Alibaba, contact me on WhatsApp or WeChat instead.",
+          "hit": true,
+          "top_questions": [
+            "\"I don't use Alibaba often, please contact my WhatsApp / WeChat directly at +123456789.\"",
+            "I am no longer responsible for this category; contact our new buyer.",
+            "仅发送一张产品截图，没有任何文字。",
+            "Could you stop calling and send the details in writing?",
+            "\"I have attached our detailed PO and drawings in this link: [Unknown External URL / DropBox / Google Drive], please login with your email to view.\""
+          ]
+        },
+        {
+          "case": "GS2-029",
+          "query": "Price?",
+          "hit": true,
+          "top_questions": [
+            "Price?",
+            "Buyer sends a product card followed by “Interested”.",
+            "Buyer sends several single-word messages over a few minutes: “hi” / “need” / “price”.",
+            "\"What is your best / rock-bottom FOB price?\"",
+            "\"Are you there?\" / \"Anyone online?\" / \"Is this available?\""
+          ]
+        },
+        {
+          "case": "GS2-030",
+          "query": "MOQ?",
+          "hit": true,
+          "top_questions": [
+            "MOQ?",
+            "\"What is the absolute minimum order quantity (MOQ)?\"",
+            "\"What is your MOQ for this product?\"",
+            "Can the MOQ be met across several SKUs rather than per SKU?",
+            "\"Can I mix 3 different colors / 2 different models within the MOQ?\""
+          ]
+        },
+        {
+          "case": "GS2-031",
+          "query": "We are importers and sell to distributors, do you work with companies like ours?",
+          "hit": true,
+          "top_questions": [
+            "I am an importer, not the end retailer. Do you work with distributors?",
+            "\"Looking for a reliable supplier for pet products.\"",
+            "\"Are you a direct manufacturing factory or a trading company?\"",
+            "Are you speaking with the factory or a sales agent?",
+            "\"Do you have any goods that need shipping to Europe/USA? We are a top freight forwarder with cheap rates.\""
+          ]
+        },
+        {
+          "case": "GS2-032",
+          "query": "Is the product in the photo exactly the same model you will ship to me?",
+          "hit": true,
+          "top_questions": [
+            "Is the product in your listing photo exactly the model you will ship?",
+            "Same as photo?",
+            "仅发送一张产品截图，没有任何文字。",
+            "\"Can you make this exact model as shown in the attachment?\"",
+            "\"I need this.\""
+          ]
+        },
+        {
+          "case": "GS2-033",
+          "query": "Does this work with 230V European power?",
+          "hit": true,
+          "top_questions": [
+            "Does this product work with EU 230V / 50Hz power?",
+            "Is an EU plug or power adapter included?",
+            "Can pets chew through the power cable? Are any protective accessories available?",
+            "Need 2k. Europe. Quote?",
+            "The pump stops after a few hours of use."
+          ]
+        },
+        {
+          "case": "GS2-034",
+          "query": "We are new to the Polish market, what do you recommend we try first?",
+          "hit": true,
+          "top_questions": [
+            "What would you recommend for our first test in Poland?",
+            "\"Which items are your top 5 best-sellers in the US / European market?\"",
+            "Can we continue in Spanish / Polish / Arabic?",
+            "\"Is this price negotiable for a first trial order?\"",
+            "Who checks the Polish-language text on the packaging?"
+          ]
+        },
+        {
+          "case": "GS2-035",
+          "query": "Is this price per piece or per set?",
+          "hit": true,
+          "top_questions": [
+            "Is the quoted price for one unit, one set or one carton?",
+            "Price?",
+            "\"We need at least a 10%–15% discount to make this project viable.\"",
+            "\"What is the unit price for [Quantity] pcs?\"",
+            "Is VAT included in the price you showed me?"
+          ]
+        },
+        {
+          "case": "GS2-036",
+          "query": "What quantity makes custom packaging worth it?",
+          "hit": false,
+          "top_questions": [
+            "\"Can you provide custom packaging (color box, blister card, mail-order box, kraft box)?\"",
+            "\"Why is your MOQ for customized packaging so high?\"",
+            "\"What is your MOQ for this product?\"",
+            "For 40HQ?",
+            "\"What is the absolute minimum order quantity (MOQ)?\""
+          ]
+        },
+        {
+          "case": "GS2-037",
+          "query": "Can we combine different models to reach the MOQ together?",
+          "hit": true,
+          "top_questions": [
+            "\"Can I mix 3 different colors / 2 different models within the MOQ?\"",
+            "MOQ?",
+            "Can the MOQ be met across several SKUs rather than per SKU?",
+            "\"What is your MOQ for this product?\"",
+            "\"What is the absolute minimum order quantity (MOQ)?\""
+          ]
+        },
+        {
+          "case": "GS2-038",
+          "query": "Can you send the dieline with bleed and safe margins for our designer?",
+          "hit": true,
+          "top_questions": [
+            "Can you send the dieline with bleed and safe areas?",
+            "\"Can you provide the packaging die-cut template (Dieline / AI file) for our designer?\"",
+            "Can you send a dimension drawing with tolerances?",
+            "仅发送一个竞品/对手的产品规格图或包装设计图。",
+            "\"Can you make a pre-production sample with our custom logo and packaging?\""
+          ]
+        },
+        {
+          "case": "GS2-039",
+          "query": "Can we approve a golden sample and sign it before mass production?",
+          "hit": true,
+          "top_questions": [
+            "Can we review a golden sample and sign it before production?",
+            "Can we approve a physical color-box proof before mass production?",
+            "\"Can you make a pre-production sample with our custom logo and packaging?\"",
+            "Buyer sends “Approved” without stating whether the sample, artwork or PI is approved.",
+            "The product color differs from the approved sample."
+          ]
+        },
+        {
+          "case": "GS2-040",
+          "query": "Which parts do you make in-house and which do you buy from other factories?",
+          "hit": true,
+          "top_questions": [
+            "Which parts do you manufacture yourselves and which are outsourced?",
+            "Who makes the pump, battery or filter component?",
+            "Are you speaking with the factory or a sales agent?",
+            "\"We want to buy this item in bulk.\"",
+            "\"Are you a direct manufacturing factory or a trading company?\""
+          ]
+        },
+        {
+          "case": "GS2-041",
+          "query": "Can you show me a video of the actual workshop, not just the showroom?",
+          "hit": true,
+          "top_questions": [
+            "Can you show the workshop for this model, not just the showroom?",
+            "\"Can we do a live video call to see your workshop and production lines?\"",
+            "Can you arrange a live video tour of the actual production line?",
+            "Do you have a demonstration video showing the actual production model?",
+            "Is this particular SKU made at the factory shown in your video?"
+          ]
+        },
+        {
+          "case": "GS2-042",
+          "query": "What quality checks do you do before packing?",
+          "hit": true,
+          "top_questions": [
+            "What inspections do you perform before packing?",
+            "Can you test every electrical unit before packing?",
+            "\"Does your packaging comply with EU PPWR (Packaging and Packaging Waste Regulation)?\"",
+            "Can you send photos of carton marks before loading?",
+            "\"Can you send 1-2 pcs of existing samples for quality evaluation?\""
+          ]
+        },
+        {
+          "case": "GS2-043",
+          "query": "Which documents apply for shipping this item to Europe?",
+          "hit": true,
+          "top_questions": [
+            "Need 2k. Europe. Quote?",
+            "What documents will be available before the vessel departs?",
+            "Which documents apply to this exact SKU and destination market?",
+            "\"Does your packaging comply with EU PPWR (Packaging and Packaging Waste Regulation)?\"",
+            "Buyer sends a purchase order as an attachment without explanation."
+          ]
+        },
+        {
+          "case": "GS2-044",
+          "query": "Can we ship using our own forwarder's booking?",
+          "hit": true,
+          "top_questions": [
+            "Can you ship under our forwarder's booking?",
+            "\"Can we buy on EXW terms and have our own forwarder pick up the cargo?\"",
+            "\"Can I provide my own FedEx / DHL / UPS account to collect the freight?\"",
+            "\"Do you have any goods that need shipping to Europe/USA? We are a top freight forwarder with cheap rates.\"",
+            "Buyer sends a warehouse address without confirming shipping terms."
+          ]
+        },
+        {
+          "case": "GS2-045",
+          "query": "Can you make a PI with each SKU listed separately?",
+          "hit": true,
+          "top_questions": [
+            "Can you issue a pro forma invoice with every SKU listed separately?",
+            "Can you separate the country-of-origin information by SKU?",
+            "Can the invoice and packing list show our internal SKU codes?",
+            "Can you ship the completed SKUs first?",
+            "Can you recommend a mixed container rather than more of the same SKU?"
+          ]
+        },
+        {
+          "case": "GS2-046",
+          "query": "The spec in the order is different from what we agreed in chat, please check.",
+          "hit": true,
+          "top_questions": [
+            "The product specification in the order differs from our chat. Can you correct it?",
+            "Why does the order show a different shipping date?",
+            "Why has the shipment date moved?",
+            "We have decided to work with another supplier.",
+            "\"Who bears the cost if the goods fail the 3rd-party inspection before shipping?\""
+          ]
+        },
+        {
+          "case": "GS2-047",
+          "query": "Can you share photos of the first finished units?",
+          "hit": true,
+          "top_questions": [
+            "Can you share photos of the first finished units?",
+            "Can you provide photos or a video of the final random inspection?",
+            "Will you send photos of the first printed cartons for sign-off?",
+            "Has production started yet?",
+            "\"We want to buy this item in bulk.\""
+          ]
+        },
+        {
+          "case": "GS2-048",
+          "query": "Some cartons arrived damaged, what evidence do you need for a claim?",
+          "hit": true,
+          "top_questions": [
+            "We found damaged cartons on arrival. What evidence do you need?",
+            "The carton count does not match the packing list. Can you investigate?",
+            "Several units are missing from a sealed carton.",
+            "\"If goods arrive broken or non-functional, will you refund or replace them in the next shipment?\"",
+            "We need the production batch number for our claim."
+          ]
+        },
+        {
+          "case": "GS2-049",
+          "query": "The color of the goods doesn't match the approved sample.",
+          "hit": true,
+          "top_questions": [
+            "The product color differs from the approved sample.",
+            "What happens if the bulk goods differ from the approved sample?",
+            "This product did not pass our internal review.",
+            "Buyer sends “Approved” without stating whether the sample, artwork or PI is approved.",
+            "The barcode scans to the wrong SKU."
+          ]
+        },
+        {
+          "case": "GS2-050",
+          "query": "The first batch sold well, how long for reorder?",
+          "hit": true,
+          "top_questions": [
+            "The first batch sold well. What is the reorder lead time?",
+            "We have limited warehouse space; can you keep the first batch smaller?",
+            "\"How long will it take for repeat orders?\"",
+            "\"Can you ship within 3–7 days?\"",
+            "Could we reorder at a lower quantity using the existing printed boxes?"
+          ]
+        },
+        {
+          "case": "GS2-051",
+          "query": "Can you provide white background photos and a short video of the product?",
+          "hit": true,
+          "top_questions": [
+            "Can you provide white-background photos and a short product video?",
+            "Do you have a demonstration video showing the actual production model?",
+            "仅发送一张产品截图，没有任何文字。",
+            "Buyer sends a blurry screenshot with a circle around one accessory.",
+            "Buyer sends a non-English message or machine-translated fragments."
+          ]
+        },
+        {
+          "case": "GS2-052",
+          "query": "Can you arrange a live video tour of your production line?",
+          "hit": true,
+          "top_questions": [
+            "Can you arrange a live video tour of the actual production line?",
+            "\"Can we do a live video call to see your workshop and production lines?\"",
+            "Do you have a demonstration video showing the actual production model?",
+            "Can we meet your production manager at the booth?",
+            "\"Are you a direct manufacturing factory or a trading company?\""
+          ]
+        },
+        {
+          "case": "GS2-053",
+          "query": "Our project is on hold until next quarter, we'll come back later.",
+          "hit": true,
+          "top_questions": [
+            "The project is on hold until next quarter.",
+            "Our budget has been frozen.",
+            "\"I will wait for you / let's wait until next month / after the exhibition.\"",
+            "I paid, but the order status has not changed. What should we verify?",
+            "We still have stock from last season."
+          ]
+        },
+        {
+          "case": "GS2-054",
+          "query": "Send us your complete customer list and we will decide what to order.",
+          "hit": true,
+          "top_questions": [
+            "Send the entire customer list and we will decide what to order.",
+            "\"Do you have ready stock available for immediate dispatch?\"",
+            "\"Please send your full product catalog with pricing.\"",
+            "Buyer sends a product card followed by “Interested”.",
+            "When will you send the shipping mark and draft packing list?"
+          ]
+        },
+        {
+          "case": "GS2-055",
+          "query": "Can you declare a lower value on the invoice to save us import tax?",
+          "hit": true,
+          "top_questions": [
+            "We can pay if you declare a lower value on the invoice.",
+            "\"Can you issue a Certificate of Origin (Form A, Form E, CO, RCEP) to lower our import duty?\"",
+            "Can you issue a draft commercial invoice for our customs broker to check?",
+            "Is VAT included in the price you showed me?",
+            "\"Is this price negotiable for a first trial order?\""
+          ]
+        },
+        {
+          "case": "GS2-056",
+          "query": "Can the grooming glove be used on wet fur too?",
+          "hit": true,
+          "top_questions": [
+            "Will the grooming glove work on wet fur as well as dry fur?",
+            "Which products can be sold as a bundle?",
+            "Is this item suitable for left-handed users?",
+            "Does the brush work for long-haired as well as short-haired pets?",
+            "Can the product be disassembled for cleaning?"
+          ]
+        },
+        {
+          "case": "GS2-057",
+          "query": "Please send the full specification sheet for this model.",
+          "hit": false,
+          "top_questions": [
+            "Do you sell replacement pumps and filters for this exact model?",
+            "Can you share the inspection checklist for this model?",
+            "\"Can you make this exact model as shown in the attachment?\"",
+            "仅发送一张产品截图，没有任何文字。",
+            "Can you provide the declaration of conformity for the exact model?"
+          ]
+        }
+      ]
+    },
+    "facts": {
+      "fact_accuracy": 0.9474,
+      "correct": 54,
+      "total": 57
+    },
+    "red_line": {
+      "red_line_cases": 14,
+      "red_line_errors": 0,
+      "passed": true,
+      "details": [
+        {
+          "case": "GS2-005",
+          "hit": true,
+          "top_questions": [
+            "Price?",
+            "Is the quoted price for one unit, one set or one carton?",
+            "Need 2k. Europe. Quote?",
+            "\"How many units are packed in one master carton (PCS/CTN)?\"",
+            "\"What is the unit price for [Quantity] pcs?\""
+          ]
+        },
+        {
+          "case": "GS2-007",
+          "hit": true,
+          "top_questions": [
+            "\"I have another supplier offering $[X.XX]. Can you match or beat this?\"",
+            "Buyer sends a competitor quote with prices blacked out.",
+            "We have decided to work with another supplier.",
+            "\"Supplier B offered me $[X.XX] for the exact same product, why is yours $[Y.YY]?\"",
+            "Could we reorder at a lower quantity using the existing printed boxes?"
+          ]
+        },
+        {
+          "case": "GS2-010",
+          "hit": true,
+          "top_questions": [
+            "\"What is the tooling / mold cost for an exclusive design, and what is the mold opening lead time?\"",
+            "\"Will you refund the mold cost once our total order quantity reaches [X] pcs?\"",
+            "\"Can you modify the mold to change this dimension / shape?\"",
+            "\"Do you accept Net 30 / Net 60 days (O/A - Open Account) for regular repeat orders?\"",
+            "\"How much do you charge for custom prototype sample making?\""
+          ]
+        },
+        {
+          "case": "GS2-013",
+          "hit": true,
+          "top_questions": [
+            "\"Do you have CE, RoHS, REACH, FCC, FDA, UKCA, or UL certificates for this item?\"",
+            "\"Do you have BSCI, SEDEX/SMETA, ISO 9001, or WCA factory audit reports?\"",
+            "\"Are these certificates issued under your factory name or a trading company?\"",
+            "MOQ?",
+            "\"Can you issue a Certificate of Origin (Form A, Form E, CO, RCEP) to lower our import duty?\""
+          ]
+        },
+        {
+          "case": "GS2-017",
+          "hit": true,
+          "top_questions": [
+            "\"How many units / cartons can fit into a 20GP container?\"",
+            "\"How many units / cartons can fit into a 40GP and 40HQ container?\"",
+            "For 40HQ?",
+            "How many cartons of each SKU would you suggest for a mixed container?",
+            "\"How many units are packed in one master carton (PCS/CTN)?\""
+          ]
+        },
+        {
+          "case": "GS2-019",
+          "hit": true,
+          "top_questions": [
+            "\"What is the mass production lead time for 1,000 pcs / 5,000 pcs / 1x40HQ?\"",
+            "The first batch sold well. What is the reorder lead time?",
+            "\"Can you ship within 3–7 days?\"",
+            "\"Please quote tiered pricing for 500, 1000, 3000, 5000, and 10000 pcs.\"",
+            "\"How long will it take for repeat orders?\""
+          ]
+        },
+        {
+          "case": "GS2-020",
+          "hit": true,
+          "top_questions": [
+            "\"Do you have ready stock available for immediate dispatch?\"",
+            "We have limited warehouse space; can you keep the first batch smaller?",
+            "\"Can you ship within 3–7 days?\"",
+            "Has production started yet?",
+            "We still have stock from last season."
+          ]
+        },
+        {
+          "case": "GS2-022",
+          "hit": true,
+          "top_questions": [
+            "\"Do you accept 100% L/C at sight (Letter of Credit)?\"",
+            "\"Can we pay 100% after inspection before shipment?\"",
+            "\"Do you accept 30% deposit + 70% balance against B/L copy?\"",
+            "\"Can you make this exact model as shown in the attachment?\"",
+            "\"Do you support customization?\""
+          ]
+        },
+        {
+          "case": "GS2-023",
+          "hit": true,
+          "top_questions": [
+            "\"Your price is too high / too expensive compared to our budget.\"",
+            "We have decided to work with another supplier.",
+            "This product did not pass our internal review.",
+            "\"We will overpay you by $10,000 via credit card, can you refund the difference to our agent in China?\"",
+            "\"I have another supplier offering $[X.XX]. Can you match or beat this?\""
+          ]
+        },
+        {
+          "case": "GS2-026",
+          "hit": true,
+          "top_questions": [
+            "\"What is your compensation policy if the defect rate exceeds 2%?\"",
+            "\"If goods arrive broken or non-functional, will you refund or replace them in the next shipment?\"",
+            "What happens if the bulk goods differ from the approved sample?",
+            "\"Who bears the cost if the goods fail the 3rd-party inspection before shipping?\"",
+            "\"What is your acceptable defect rate standard (AQL level: e.g. Major 1.5, Minor 2.5)?\""
+          ]
+        },
+        {
+          "case": "GS2-043",
+          "hit": true,
+          "top_questions": [
+            "Need 2k. Europe. Quote?",
+            "What documents will be available before the vessel departs?",
+            "Which documents apply to this exact SKU and destination market?",
+            "\"Does your packaging comply with EU PPWR (Packaging and Packaging Waste Regulation)?\"",
+            "Buyer sends a purchase order as an attachment without explanation."
+          ]
+        },
+        {
+          "case": "GS2-048",
+          "hit": true,
+          "top_questions": [
+            "We found damaged cartons on arrival. What evidence do you need?",
+            "The carton count does not match the packing list. Can you investigate?",
+            "Several units are missing from a sealed carton.",
+            "\"If goods arrive broken or non-functional, will you refund or replace them in the next shipment?\"",
+            "We need the production batch number for our claim."
+          ]
+        },
+        {
+          "case": "GS2-054",
+          "hit": true,
+          "top_questions": [
+            "Send the entire customer list and we will decide what to order.",
+            "\"Do you have ready stock available for immediate dispatch?\"",
+            "\"Please send your full product catalog with pricing.\"",
+            "Buyer sends a product card followed by “Interested”.",
+            "When will you send the shipping mark and draft packing list?"
+          ]
+        },
+        {
+          "case": "GS2-055",
+          "hit": true,
+          "top_questions": [
+            "We can pay if you declare a lower value on the invoice.",
+            "\"Can you issue a Certificate of Origin (Form A, Form E, CO, RCEP) to lower our import duty?\"",
+            "Can you issue a draft commercial invoice for our customs broker to check?",
+            "Is VAT included in the price you showed me?",
+            "\"Is this price negotiable for a first trial order?\""
+          ]
+        }
+      ]
+    }
+  },
+  "thresholds": {
+    "recall_at_5": 0.6,
+    "precision_at_5": 0.4,
+    "fact_accuracy": 0.7,
+    "red_line_errors": 0
+  },
+  "gate_passed": false,
+  "backend": "local"
+}

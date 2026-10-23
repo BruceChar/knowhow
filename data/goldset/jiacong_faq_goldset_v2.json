@@ -1,0 +1,588 @@
+{
+  "name": "佳宠 FAQ 黄金集 v2",
+  "version": 2,
+  "cases": [
+    {
+      "id": "GS2-001",
+      "module": "M01",
+      "query": "Hi, I saw your products online and want to know more about your company, can you tell me what you sell?",
+      "ideal_hit_question": "\"I am interested in your product, please contact me.\"（系统默认第一句）",
+      "expected_facts": [
+        "Glad you reached out. So I point you to the right part of our range rather than send everything: we work across grooming"
+      ],
+      "red_line": false
+    },
+    {
+      "id": "GS2-002",
+      "module": "M01",
+      "query": "What is the minimum order quantity for your products?",
+      "ideal_hit_question": "\"What is your MOQ for this product?\"",
+      "expected_facts": [
+        "MOQ follows the model and the process. Stock colours start lower; your own logo is usually around 1,000 pcs, custom pack"
+      ],
+      "red_line": false,
+      "ideal_hit_questions": [
+        "\"What is your MOQ for this product?\"",
+        "\"What is the absolute minimum order quantity (MOQ)?\""
+      ]
+    },
+    {
+      "id": "GS2-003",
+      "module": "M02",
+      "query": "Do you have a product brochure or catalog in PDF for this year's new collection?",
+      "ideal_hit_question": "\"Do you have a PDF catalog for all 2026 new arrivals?\"",
+      "expected_facts": [
+        "Yes, the catalog is a PDF and covers our current range. I can send the section that matters rather than the whole file —"
+      ],
+      "red_line": false
+    },
+    {
+      "id": "GS2-004",
+      "module": "M02",
+      "query": "Which models sell the most in Europe or America? Give me your top sellers.",
+      "ideal_hit_question": "\"Which items are your top 5 best-sellers in the US / European market?\"",
+      "expected_facts": [
+        "I can help you narrow this down. I would first check the figures for the market you're targeting, rather than label a ge"
+      ],
+      "red_line": false
+    },
+    {
+      "id": "GS2-005",
+      "module": "M03",
+      "query": "How much for 1000 pieces? Please give me the unit price.",
+      "ideal_hit_question": "\"What is the unit price for [Quantity] pcs?\"",
+      "expected_facts": [
+        "I'll work from the quantity you've given. To make the quote useful, let's first settle the branding and packaging—those "
+      ],
+      "red_line": true
+    },
+    {
+      "id": "GS2-006",
+      "module": "M03",
+      "query": "你们最低起订量是多少？可以混合型号吗",
+      "ideal_hit_question": "\"What is the absolute minimum order quantity (MOQ)?\"",
+      "expected_facts": [
+        "There is no single company-wide MOQ. It follows the model and the process: stock colours start lower, your own logo is u"
+      ],
+      "red_line": false
+    },
+    {
+      "id": "GS2-007",
+      "module": "M03",
+      "query": "Another factory quoted me a lower price for the same thing, can you match it?",
+      "ideal_hit_question": "\"I have another supplier offering $[X.XX]. Can you match or beat this?\"",
+      "expected_facts": [
+        "I can compare, but only like for like — the two offers may not be the same product. Send the competitor's specification "
+      ],
+      "red_line": true
+    },
+    {
+      "id": "GS2-008",
+      "module": "M04",
+      "query": "Can we put our own brand logo on your products?",
+      "ideal_hit_question": "\"Can we put our own private brand logo on the product?\"",
+      "expected_facts": [
+        "Yes, your logo can go on most models, subject to the surface and the printing method. Which model, and do you have artwo"
+      ],
+      "red_line": false
+    },
+    {
+      "id": "GS2-009",
+      "module": "M04",
+      "query": "你们能做彩盒包装吗？我们想要品牌定制包装",
+      "ideal_hit_question": "\"Can you provide custom packaging (color box, blister card, mail-order box, kraft box)?\"",
+      "expected_facts": [
+        "Yes, we support custom packaging. The useful starting point is how you want the customer to receive and see the product—"
+      ],
+      "red_line": false
+    },
+    {
+      "id": "GS2-010",
+      "module": "M04",
+      "query": "How much is the mold cost and how long to open a new mold?",
+      "ideal_hit_question": "\"What is the tooling / mold cost for an exclusive design, and what is the mold opening lead time?\"",
+      "expected_facts": [
+        "Tooling cost and mould-opening lead time are quoted together after the design review, because both depend on the structu"
+      ],
+      "red_line": true
+    },
+    {
+      "id": "GS2-011",
+      "module": "M05",
+      "query": "Do you charge for samples? Can the fee be refunded when we place a bulk order?",
+      "ideal_hit_question": "\"What is the sample fee, and can it be deducted from the bulk order?\"",
+      "expected_facts": [
+        "Yes, the sample fee can be deducted from your bulk order. The amount depends on the sample itself and whether you need a"
+      ],
+      "red_line": false
+    },
+    {
+      "id": "GS2-012",
+      "module": "M05",
+      "query": "How long does it take to make a customized sample?",
+      "ideal_hit_question": "\"How many days does it take to finish a custom sample?\"",
+      "expected_facts": [
+        "A custom sample usually takes about 7–10 days after artwork and specification are confirmed; a standard sample is quicke"
+      ],
+      "red_line": false
+    },
+    {
+      "id": "GS2-013",
+      "module": "M06",
+      "query": "Do you have CE and RoHS certificates for this item?",
+      "ideal_hit_question": "\"Do you have CE, RoHS, REACH, FCC, FDA, UKCA, or UL certificates for this item?\"",
+      "expected_facts": [
+        "Certificates are model-specific, so I would check the exact item and the destination market rather than answer for the w"
+      ],
+      "red_line": true
+    },
+    {
+      "id": "GS2-014",
+      "module": "M06",
+      "query": "Are you a real factory or just a trading company?",
+      "ideal_hit_question": "\"Are you a direct manufacturing factory or a trading company?\"",
+      "expected_facts": [
+        "We are a factory-direct supplier with our own export rights, and the production site has been running since 2009. If it "
+      ],
+      "red_line": false
+    },
+    {
+      "id": "GS2-015",
+      "module": "M06",
+      "query": "Which big brands or retailers have you worked with before?",
+      "ideal_hit_question": "\"Which big brands, supermarkets, or major retailers have you supplied before?\"",
+      "expected_facts": [
+        "We can share references that are cleared for public mention, such as Walmart, MINISO, Dollar Tree, Petsmart and Egidna. "
+      ],
+      "red_line": false
+    },
+    {
+      "id": "GS2-016",
+      "module": "M07",
+      "query": "What is the carton size? L x W x H in cm please.",
+      "ideal_hit_question": "\"What are the master carton dimensions (L × W × H in cm / inches)?\"",
+      "expected_facts": [
+        "Carton dimensions depend on the model and the retail pack. Tell me the model and the packaging format, and I will send L"
+      ],
+      "red_line": false
+    },
+    {
+      "id": "GS2-017",
+      "module": "M07",
+      "query": "How many cartons fit into one 20GP container?",
+      "ideal_hit_question": "\"How many units / cartons can fit into a 20GP container?\"",
+      "expected_facts": [
+        "20GP capacity depends on carton size and how the cartons stack, so I would calculate it from the actual pack rather than"
+      ],
+      "red_line": true
+    },
+    {
+      "id": "GS2-018",
+      "module": "M07",
+      "query": "Which port do you ship from?",
+      "ideal_hit_question": "\"What is your nearest loading port? (e.g. Ningbo, Shanghai, Shenzhen, Qingdao)\"",
+      "expected_facts": [
+        "Ningbo is our nearest port, with Shanghai as the alternative for some sailings. Which destination port are you shipping "
+      ],
+      "red_line": false
+    },
+    {
+      "id": "GS2-019",
+      "module": "M08",
+      "query": "How long is your production lead time for 5000 pieces?",
+      "ideal_hit_question": "\"What is the mass production lead time for 1,000 pcs / 5,000 pcs / 1x40HQ?\"",
+      "expected_facts": [
+        "For 1,000–5,000 pcs, production is normally around 20–25 days after deposit and artwork approval; a 40HQ is planned sepa"
+      ],
+      "red_line": true
+    },
+    {
+      "id": "GS2-020",
+      "module": "M08",
+      "query": "Do you have ready stock right now that can ship immediately?",
+      "ideal_hit_question": "\"Do you have ready stock available for immediate dispatch?\"",
+      "expected_facts": [
+        "Most of our range is made to order, so there is little ready stock. If you need something quickly, tell me the model and"
+      ],
+      "red_line": true
+    },
+    {
+      "id": "GS2-021",
+      "module": "M09",
+      "query": "What are your payment terms?",
+      "ideal_hit_question": "\"What are your standard payment terms?\"",
+      "expected_facts": [
+        "Our standard terms are 30% deposit and 70% before shipment; the exact balance trigger is written on the PI. For repeat o"
+      ],
+      "red_line": false
+    },
+    {
+      "id": "GS2-022",
+      "module": "M09",
+      "query": "Can we do 100% L/C at sight?",
+      "ideal_hit_question": "\"Do you accept 100% L/C at sight (Letter of Credit)?\"",
+      "expected_facts": [
+        "An L/C at sight can be reviewed for larger orders, but the terms have to be checked by our finance team first — I will n"
+      ],
+      "red_line": true
+    },
+    {
+      "id": "GS2-023",
+      "module": "M10",
+      "query": "Your price is much higher than our budget, can you do better?",
+      "ideal_hit_question": "\"Your price is too high / too expensive compared to our budget.\"",
+      "expected_facts": [
+        "I hear you on the budget. Before we change anything, it helps to know which part sits above it — the product, the packag"
+      ],
+      "red_line": true
+    },
+    {
+      "id": "GS2-024",
+      "module": "M10",
+      "query": "I need to check with my boss first before deciding.",
+      "ideal_hit_question": "\"I need to discuss this with my boss / purchasing committee / partner.\"",
+      "expected_facts": [
+        "That makes sense. I can put the key points on one page — specification, options and what is still open — so you are not "
+      ],
+      "red_line": false
+    },
+    {
+      "id": "GS2-025",
+      "module": "M11",
+      "query": "What is the warranty period for your products?",
+      "ideal_hit_question": "\"What is your warranty period? (1 year, 2 years?)\"",
+      "expected_facts": [
+        "Warranty is set per model and confirmed on the PI; I do not want to quote a period that the contract then contradicts. T"
+      ],
+      "red_line": false
+    },
+    {
+      "id": "GS2-026",
+      "module": "M11",
+      "query": "What happens if more than 2% of the goods are defective?",
+      "ideal_hit_question": "\"What is your compensation policy if the defect rate exceeds 2%?\"",
+      "expected_facts": [
+        "Compensation is handled case by case against the inspection record: replacement in the next shipment or credit for confi"
+      ],
+      "red_line": true
+    },
+    {
+      "id": "GS2-027",
+      "module": "M12",
+      "query": "Please send the quotation directly to my personal gmail.",
+      "ideal_hit_question": "\"Send your quote directly to my personal Gmail: xxx@gmail.com.\"",
+      "expected_facts": [
+        "I can send the quotation, but I will keep it in this chat so the version and the terms stay traceable for both of us. Yo"
+      ],
+      "red_line": false
+    },
+    {
+      "id": "GS2-028",
+      "module": "M12",
+      "query": "I don't use Alibaba, contact me on WhatsApp or WeChat instead.",
+      "ideal_hit_question": "\"I don't use Alibaba often, please contact my WhatsApp / WeChat directly at +123456789.\"",
+      "expected_facts": [
+        "I understand WhatsApp is easier, but we keep quotations and order details on the platform so both sides have the same re"
+      ],
+      "red_line": false
+    },
+    {
+      "id": "GS2-029",
+      "module": "M13",
+      "query": "Price?",
+      "ideal_hit_question": "Price?",
+      "expected_facts": [
+        "Which model? Tell me the item and the quantity, and I will send the unit price for that combination."
+      ],
+      "red_line": false
+    },
+    {
+      "id": "GS2-030",
+      "module": "M13",
+      "query": "MOQ?",
+      "ideal_hit_question": "MOQ?",
+      "expected_facts": [
+        "It depends on the model and on whether you need your own logo or packaging. Which item are you looking at?"
+      ],
+      "red_line": false
+    },
+    {
+      "id": "GS2-031",
+      "module": "M14",
+      "query": "We are importers and sell to distributors, do you work with companies like ours?",
+      "ideal_hit_question": "I am an importer, not the end retailer. Do you work with distributors?",
+      "expected_facts": [
+        "Yes — a large part of our work is with importers and distributors rather than end retailers. That usually means mixed co"
+      ],
+      "red_line": false
+    },
+    {
+      "id": "GS2-032",
+      "module": "M15",
+      "query": "Is the product in the photo exactly the same model you will ship to me?",
+      "ideal_hit_question": "Is the product in your listing photo exactly the model you will ship?",
+      "expected_facts": [
+        "The listing photo shows the model as we ship it, but colours and small components can differ by batch. Tell me the model"
+      ],
+      "red_line": false
+    },
+    {
+      "id": "GS2-033",
+      "module": "M15",
+      "query": "Does this work with 230V European power?",
+      "ideal_hit_question": "Does this product work with EU 230V / 50Hz power?",
+      "expected_facts": [
+        "Mains models are produced in different voltage versions; the EU version has to be specified as 220–240V / 50Hz on the or"
+      ],
+      "red_line": false
+    },
+    {
+      "id": "GS2-034",
+      "module": "M16",
+      "query": "We are new to the Polish market, what do you recommend we try first?",
+      "ideal_hit_question": "What would you recommend for our first test in Poland?",
+      "expected_facts": [
+        "For a first test in Poland, I would start narrow: one grooming tool, one leash and one fountain, rather than a broad ass"
+      ],
+      "red_line": false
+    },
+    {
+      "id": "GS2-035",
+      "module": "M17",
+      "query": "Is this price per piece or per set?",
+      "ideal_hit_question": "Is the quoted price for one unit, one set or one carton?",
+      "expected_facts": [
+        "The quoted price is per unit unless it says otherwise; sets and cartons are priced separately. Tell me which line you ar"
+      ],
+      "red_line": false
+    },
+    {
+      "id": "GS2-036",
+      "module": "M17",
+      "query": "What quantity makes custom packaging worth it?",
+      "ideal_hit_question": "What quantity makes a custom box economical?",
+      "expected_facts": [
+        "It depends on the box structure and the printing, not on one threshold. I can show the unit effect at two quantities — y"
+      ],
+      "red_line": false,
+      "ideal_hit_questions": [
+        "What quantity makes a custom box economical?",
+        "\"Can you provide custom packaging (color box, blister card, mail-order box, kraft box)?\""
+      ]
+    },
+    {
+      "id": "GS2-037",
+      "module": "M18",
+      "query": "Can we combine different models to reach the MOQ together?",
+      "ideal_hit_question": "Can the MOQ be met across several SKUs rather than per SKU?",
+      "expected_facts": [
+        "Yes — for a mixed container the MOQ is usually counted across the order rather than per SKU, provided each SKU still mee"
+      ],
+      "red_line": false
+    },
+    {
+      "id": "GS2-038",
+      "module": "M19",
+      "query": "Can you send the dieline with bleed and safe margins for our designer?",
+      "ideal_hit_question": "Can you send the dieline with bleed and safe areas?",
+      "expected_facts": [
+        "Yes, I will send the dieline with bleed and safe areas marked. Tell me the box style and whether your designer works in "
+      ],
+      "red_line": false
+    },
+    {
+      "id": "GS2-039",
+      "module": "M20",
+      "query": "Can we approve a golden sample and sign it before mass production?",
+      "ideal_hit_question": "Can we review a golden sample and sign it before production?",
+      "expected_facts": [
+        "Yes, we can produce a golden sample, sign it and keep a copy for both sides before production. That is the reference for"
+      ],
+      "red_line": false
+    },
+    {
+      "id": "GS2-040",
+      "module": "M21",
+      "query": "Which parts do you make in-house and which do you buy from other factories?",
+      "ideal_hit_question": "Which parts do you manufacture yourselves and which are outsourced?",
+      "expected_facts": [
+        "Injection moulding, assembly and packing are in-house; some components — pumps, batteries, electronics — come from speci"
+      ],
+      "red_line": false
+    },
+    {
+      "id": "GS2-041",
+      "module": "M21",
+      "query": "Can you show me a video of the actual workshop, not just the showroom?",
+      "ideal_hit_question": "Can you show the workshop for this model, not just the showroom?",
+      "expected_facts": [
+        "Yes, I can show the workshop where that model runs, not just the showroom. Tell me the model and I will arrange the foot"
+      ],
+      "red_line": false
+    },
+    {
+      "id": "GS2-042",
+      "module": "M22",
+      "query": "What quality checks do you do before packing?",
+      "ideal_hit_question": "What inspections do you perform before packing?",
+      "expected_facts": [
+        "Incoming component checks, in-line assembly checks and a final random inspection before packing. I can send the checklis"
+      ],
+      "red_line": false
+    },
+    {
+      "id": "GS2-043",
+      "module": "M23",
+      "query": "Which documents apply for shipping this item to Europe?",
+      "ideal_hit_question": "Which documents apply to this exact SKU and destination market?",
+      "expected_facts": [
+        "Documents depend on the SKU and the destination, so I will list what applies and what we actually hold rather than answe"
+      ],
+      "red_line": true
+    },
+    {
+      "id": "GS2-044",
+      "module": "M24",
+      "query": "Can we ship using our own forwarder's booking?",
+      "ideal_hit_question": "Can you ship under our forwarder's booking?",
+      "expected_facts": [
+        "Yes, we can ship under your booking; you send the booking confirmation and we coordinate the pickup and the documents. W"
+      ],
+      "red_line": false
+    },
+    {
+      "id": "GS2-045",
+      "module": "M25",
+      "query": "Can you make a PI with each SKU listed separately?",
+      "ideal_hit_question": "Can you issue a pro forma invoice with every SKU listed separately?",
+      "expected_facts": [
+        "Yes, the PI can list each SKU separately with quantity, unit price and carton details. Send the final quantities."
+      ],
+      "red_line": false
+    },
+    {
+      "id": "GS2-046",
+      "module": "M26",
+      "query": "The spec in the order is different from what we agreed in chat, please check.",
+      "ideal_hit_question": "The product specification in the order differs from our chat. Can you correct it?",
+      "expected_facts": [
+        "Send the line that differs and what it should say; I will compare it with the agreed chat record and correct the order b"
+      ],
+      "red_line": false
+    },
+    {
+      "id": "GS2-047",
+      "module": "M27",
+      "query": "Can you share photos of the first finished units?",
+      "ideal_hit_question": "Can you share photos of the first finished units?",
+      "expected_facts": [
+        "Yes, I will ask for photos of the first finished units before the run continues. Tell me which details you want to see."
+      ],
+      "red_line": false
+    },
+    {
+      "id": "GS2-048",
+      "module": "M28",
+      "query": "Some cartons arrived damaged, what evidence do you need for a claim?",
+      "ideal_hit_question": "We found damaged cartons on arrival. What evidence do you need?",
+      "expected_facts": [
+        "Photos of the cartons before opening, the damage itself, and the marks; then the units affected. That is enough to open "
+      ],
+      "red_line": true
+    },
+    {
+      "id": "GS2-049",
+      "module": "M28",
+      "query": "The color of the goods doesn't match the approved sample.",
+      "ideal_hit_question": "The product color differs from the approved sample.",
+      "expected_facts": [
+        "Send photos under daylight next to the approved sample and the batch number; I will check whether it is within the agree"
+      ],
+      "red_line": false
+    },
+    {
+      "id": "GS2-050",
+      "module": "M29",
+      "query": "The first batch sold well, how long for reorder?",
+      "ideal_hit_question": "The first batch sold well. What is the reorder lead time?",
+      "expected_facts": [
+        "Repeat orders are usually faster because the artwork and tooling are already approved; tell me the quantity and I will c"
+      ],
+      "red_line": false
+    },
+    {
+      "id": "GS2-051",
+      "module": "M30",
+      "query": "Can you provide white background photos and a short video of the product?",
+      "ideal_hit_question": "Can you provide white-background photos and a short product video?",
+      "expected_facts": [
+        "Yes, we can provide white-background images and a short product video. Tell me the resolution and the aspect ratio your "
+      ],
+      "red_line": false
+    },
+    {
+      "id": "GS2-052",
+      "module": "M31",
+      "query": "Can you arrange a live video tour of your production line?",
+      "ideal_hit_question": "Can you arrange a live video tour of the actual production line?",
+      "expected_facts": [
+        "Yes, we can arrange a live tour of the line producing your model. Tell me the time window and whether you want to record"
+      ],
+      "red_line": false
+    },
+    {
+      "id": "GS2-053",
+      "module": "M32",
+      "query": "Our project is on hold until next quarter, we'll come back later.",
+      "ideal_hit_question": "The project is on hold until next quarter.",
+      "expected_facts": [
+        "Understood — I will keep the file open and check in before the quarter starts, unless you prefer otherwise. Is there any"
+      ],
+      "red_line": false
+    },
+    {
+      "id": "GS2-054",
+      "module": "M33",
+      "query": "Send us your complete customer list and we will decide what to order.",
+      "ideal_hit_question": "Send the entire customer list and we will decide what to order.",
+      "expected_facts": [
+        "No — we do not share our customer list. I can share the models we supply and the markets they go to, without names. Whic"
+      ],
+      "red_line": true
+    },
+    {
+      "id": "GS2-055",
+      "module": "M33",
+      "query": "Can you declare a lower value on the invoice to save us import tax?",
+      "ideal_hit_question": "We can pay if you declare a lower value on the invoice.",
+      "expected_facts": [
+        "We cannot declare a value below the actual invoice; that is a false declaration and it puts both sides at risk. I will i"
+      ],
+      "red_line": true
+    },
+    {
+      "id": "GS2-056",
+      "module": "M34",
+      "query": "Can the grooming glove be used on wet fur too?",
+      "ideal_hit_question": "Will the grooming glove work on wet fur as well as dry fur?",
+      "expected_facts": [
+        "The glove works on wet fur for washing and on dry fur for loose hair; wet use needs a little more pressure. Which coat t"
+      ],
+      "red_line": false
+    },
+    {
+      "id": "GS2-057",
+      "module": "M35",
+      "query": "Please send the full specification sheet for this model.",
+      "ideal_hit_question": "Buyer sends a product card followed by “Interested”.",
+      "expected_facts": [
+        "Thanks — I can see the item. Tell me the quantity you have in mind and whether you need your own logo or packaging, and "
+      ],
+      "red_line": false,
+      "ideal_hit_questions": [
+        "Buyer sends a product card followed by “Interested”."
+      ],
+      "data_gap": "spec sheet 无独立 FAQ 条目，需补录产品规格知识"
+    }
+  ]
+}

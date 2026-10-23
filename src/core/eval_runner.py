@@ -63,19 +63,31 @@ def _norm(s: str) -> str:
     return str(s or "").strip().strip('"\'“”‘’').strip().lower()
 
 
+def _ideal_list(c: dict) -> list[str]:
+    """理想命中问题列表：兼容单条 ideal_hit_question 与多条 ideal_hit_questions。"""
+    if c.get("ideal_hit_questions"):
+        return c["ideal_hit_questions"]
+    return [c.get("ideal_hit_question", "")]
+
+
+def _hit(qs: list[str], ideal_list: list[str]) -> bool:
+    """命中判定：任一理想问题与任一检索结果规范化后相等。"""
+    return any(_norm(i) == _norm(q) for i in ideal_list for q in qs)
+
+
 def eval_retrieval(cases: list[dict], dsn: str, top_k: int = 5,
                    backend: str | None = None, include_draft: bool = False) -> dict:
     """逐 case 检索，算 Recall@5 / Precision@5。"""
     hits_all, ideal_all = [], []
     per_case = []
     for c in cases:
-        ideal = c["ideal_hit_question"]
+        ideal = _ideal_list(c)
         hits = retrieve(c["query"], dsn, top_k, backend, include_draft)
         hit_qs = [q for _, _, q in hits]
-        hit = any(_norm(ideal) == _norm(q) for q in hit_qs)
+        hit = _hit(hit_qs, ideal)
         per_case.append({"case": c["id"], "query": c["query"],
                          "hit": hit, "top_questions": hit_qs})
-        ideal_all.append(ideal)
+        ideal_all.append(ideal[0])
         hits_all.append(hit)
     recall = sum(hits_all) / len(cases) if cases else 0
     # Precision@5：命中的理想答案数 / 5（每 case 至多 1 个理想答案）
@@ -93,9 +105,9 @@ def eval_facts(cases: list[dict], dsn: str, backend: str | None = None,
     """
     # 简单版：命中理想答案即认为事实正确（黄金集答案本身就是话术库原文）
     correct = sum(1 for c in cases
-                  if any(_norm(c["ideal_hit_question"]) == _norm(q)
-                         for _, _, q in retrieve(c["query"], dsn, 5, backend,
-                                                 include_draft)))
+                  if _hit([q for _, _, q in retrieve(c["query"], dsn, 5, backend,
+                                                     include_draft)],
+                          _ideal_list(c)))
     total = len(cases)
     return {"fact_accuracy": round(correct / total, 4) if total else 0,
             "correct": correct, "total": total}
@@ -112,7 +124,7 @@ def eval_red_line(cases: list[dict], dsn: str, backend: str | None = None,
     for c in red_cases:
         hit_qs = [q for _, _, q in retrieve(c["query"], dsn, 5, backend,
                                             include_draft)]
-        ok = any(_norm(c["ideal_hit_question"]) == _norm(q) for q in hit_qs)
+        ok = _hit(hit_qs, _ideal_list(c))
         if not ok:
             errors += 1
         details.append({"case": c["id"], "hit": ok, "top_questions": hit_qs})
