@@ -1,0 +1,116 @@
+{
+  "name": "评测运行器 v1",
+  "metrics": {
+    "retrieval": {
+      "recall_at_5": 0.1667,
+      "precision_at_5": 0.0333,
+      "hit_cases": 1,
+      "total_cases": 6,
+      "per_case": [
+        {
+          "case": "GS-001",
+          "query": "What is your MOQ for this product?",
+          "hit": false,
+          "top_questions": [
+            "\"We are waiting for our client's feedback / end-customer approval.\"",
+            "\"I need this.\"",
+            "Available?",
+            "This product did not pass our internal review.",
+            "What is the difference between these two versions?"
+          ]
+        },
+        {
+          "case": "GS-002",
+          "query": "Can you send me a sample?",
+          "hit": false,
+          "top_questions": [
+            "\"We are waiting for our client's feedback / end-customer approval.\"",
+            "Available?",
+            "I am no longer responsible for this category; contact our new buyer.",
+            "\"I need to discuss this with my boss / purchasing committee / partner.\"",
+            "\"I need this.\""
+          ]
+        },
+        {
+          "case": "GS-003",
+          "query": "客户问我们的起订量是多少，最小订量怎么算",
+          "hit": false,
+          "top_questions": [
+            "\"We are waiting for our client's feedback / end-customer approval.\"",
+            "\"I need this.\"",
+            "Buyer forwards an RFQ document listing technical requirements but no question.",
+            "Buyer sends a product card followed by “Interested”.",
+            "\"I am interested in your product, please contact me.\"（系统默认第一句）"
+          ]
+        },
+        {
+          "case": "GS-004",
+          "query": "请报一下这款智能猫砂盆的最低价",
+          "hit": false,
+          "top_questions": [
+            "\"I am interested in your product, please contact me.\"（系统默认第一句）",
+            "I am no longer responsible for this category; contact our new buyer.",
+            "Available?",
+            "This product did not pass our internal review.",
+            "\"I need this.\""
+          ]
+        },
+        {
+          "case": "GS-005",
+          "query": "想了解一下你们的产品资料和最新目录",
+          "hit": false,
+          "top_questions": [
+            "\"We are waiting for our client's feedback / end-customer approval.\"",
+            "I am no longer responsible for this category; contact our new buyer.",
+            "\"I need to discuss this with my boss / purchasing committee / partner.\"",
+            "This product did not pass our internal review.",
+            "Available?"
+          ]
+        },
+        {
+          "case": "GS-006",
+          "query": "I am interested in your product, please contact me.",
+          "hit": true,
+          "top_questions": [
+            "I am no longer responsible for this category; contact our new buyer.",
+            "\"We are waiting for our client's feedback / end-customer approval.\"",
+            "\"I am interested in your product, please contact me.\"（系统默认第一句）",
+            "\"I need to discuss this with my boss / purchasing committee / partner.\"",
+            "This product did not pass our internal review."
+          ]
+        }
+      ]
+    },
+    "facts": {
+      "fact_accuracy": 0.1667,
+      "correct": 1,
+      "total": 6
+    },
+    "red_line": {
+      "red_line_cases": 1,
+      "red_line_errors": 1,
+      "passed": false,
+      "details": [
+        {
+          "case": "GS-004",
+          "hit": false,
+          "top_questions": [
+            "\"I am interested in your product, please contact me.\"（系统默认第一句）",
+            "I am no longer responsible for this category; contact our new buyer.",
+            "Available?",
+            "This product did not pass our internal review.",
+            "\"I need this.\""
+          ]
+        }
+      ]
+    }
+  },
+  "thresholds": {
+    "recall_at_5": 0.6,
+    "precision_at_5": 0.4,
+    "fact_accuracy": 0.7,
+    "red_line_errors": 0
+  },
+  "gate_passed": false,
+  "backend": "qwen3"
+}

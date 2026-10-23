@@ -1,0 +1,52 @@
+# 佳宠国际 · 产品图鉴映射配置
+# 用途：产品图鉴 Excel → sku 表 的字段映射与清洗规则
+# 换企业 = 复制本文件按对方表格改，代码零改动
+config_key: jiacong_facts
+source_kind: facts
+description: 佳宠国际产品资料图鉴信息册（21 sheet / 19 品类）
+
+# Excel 解析
+reader:
+  # 表头动态探测：扫描前 N 行找含该列名的行
+  header_detect_col: "型号"
+  max_scan_rows: 12
+  # 需要跳过的 sheet 名（说明类）
+  skip_sheets:
+    - "资料整理说明"
+
+# 列映射：源列名 → 标准字段
+mapping:
+  "型号": "sku_code"
+  "中文名": "name_zh"
+  "名称": "name_en"
+  "分类": "category"
+
+# 进入 spec JSONB 的列（企业私有/行业扩展字段）
+spec_cols:
+  - "商品编码"        # HS 编码
+  - "品牌"
+  - "材质"
+  - "颜色"
+  - "形状"
+  - "净重"
+  - "大小"
+  - "容量"
+  - "特性"
+  - "产品类型（RTS/定制）"
+  - "单件商品的外\n包装尺寸\nL*W*H"
+  - "尺寸\nL*W*H（cm）"
+  - "装箱率pcs"
+  - "毛/净重\nKG"
+  - "是否有可用运费模板"
+
+# 报价/起订量相关列（后续写 offer 表用）
+offer_cols:
+  - "价格"
+  - "起订量"
+  - "发货期\n-预计时间"
+  - "样品单价"
+
+# 必填字段
+required:
+  - "sku_code"
+  - "name_zh"

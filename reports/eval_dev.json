@@ -1,0 +1,116 @@
+{
+  "name": "评测运行器 v1",
+  "metrics": {
+    "retrieval": {
+      "recall_at_5": 0.5,
+      "precision_at_5": 0.1,
+      "hit_cases": 3,
+      "total_cases": 6,
+      "per_case": [
+        {
+          "case": "GS-001",
+          "query": "What is your MOQ for this product?",
+          "hit": true,
+          "top_questions": [
+            "MOQ?",
+            "\"What is your MOQ for this product?\"",
+            "\"What is the absolute minimum order quantity (MOQ)?\"",
+            "\"Can we start with a small trial order of 50-100 pcs to test the market?\"",
+            "\"Why is your MOQ for customized packaging so high?\""
+          ]
+        },
+        {
+          "case": "GS-002",
+          "query": "Can you send me a sample?",
+          "hit": true,
+          "top_questions": [
+            "\"Can you send me a sample?\"",
+            "\"Can you send 1-2 pcs of existing samples for quality evaluation?\"",
+            "Can you send samples from the first production batch?",
+            "The product color differs from the approved sample.",
+            "Can you send a sample from the actual production line rather than a showroom?"
+          ]
+        },
+        {
+          "case": "GS-003",
+          "query": "客户问我们的起订量是多少，最小订量怎么算",
+          "hit": false,
+          "top_questions": [
+            "\"We want to buy this item in bulk.\"",
+            "\"What is the absolute minimum order quantity (MOQ)?\"",
+            "\"We need at least a 10%–15% discount to make this project viable.\"",
+            "\"Can we start with a small trial order of 50-100 pcs to test the market?\"",
+            "We have limited warehouse space; can you keep the first batch smaller?"
+          ]
+        },
+        {
+          "case": "GS-004",
+          "query": "请报一下这款智能猫砂盆的最低价",
+          "hit": false,
+          "top_questions": [
+            "\"I am interested in your product, please contact me.\"（系统默认第一句）",
+            "Could you propose two mix options: low-risk test and higher-value assortment?",
+            "What would you recommend for our first test in Poland?",
+            "发送握手、打招呼、笑脸等纯表情符号（Emoji）。",
+            "Price?"
+          ]
+        },
+        {
+          "case": "GS-005",
+          "query": "想了解一下你们的产品资料和最新目录",
+          "hit": true,
+          "top_questions": [
+            "\"Do you have a PDF catalog for all 2026 new arrivals?\"",
+            "We still have stock from last season.",
+            "\"I am interested in your product, please contact me.\"（系统默认第一句）",
+            "We have decided to work with another supplier.",
+            "\"What is currently trending in your factory?\""
+          ]
+        },
+        {
+          "case": "GS-006",
+          "query": "I am interested in your product, please contact me.",
+          "hit": false,
+          "top_questions": [
+            "Buyer sends a product card followed by “Interested”.",
+            "We have decided to work with another supplier.",
+            "Price?",
+            "Buyer sends a non-English message or machine-translated fragments.",
+            "\"Are you there?\" / \"Anyone online?\" / \"Is this available?\""
+          ]
+        }
+      ]
+    },
+    "facts": {
+      "fact_accuracy": 0.5,
+      "correct": 3,
+      "total": 6
+    },
+    "red_line": {
+      "red_line_cases": 1,
+      "red_line_errors": 1,
+      "passed": false,
+      "details": [
+        {
+          "case": "GS-004",
+          "hit": false,
+          "top_questions": [
+            "\"I am interested in your product, please contact me.\"（系统默认第一句）",
+            "Could you propose two mix options: low-risk test and higher-value assortment?",
+            "What would you recommend for our first test in Poland?",
+            "发送握手、打招呼、笑脸等纯表情符号（Emoji）。",
+            "Price?"
+          ]
+        }
+      ]
+    }
+  },
+  "thresholds": {
+    "recall_at_5": 0.6,
+    "precision_at_5": 0.4,
+    "fact_accuracy": 0.7,
+    "red_line_errors": 0
+  },
+  "gate_passed": false,
+  "backend": "local"
+}

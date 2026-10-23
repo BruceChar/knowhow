@@ -1,0 +1,54 @@
+{
+  "name": "jiacong_faq_goldset_v1",
+  "description": "佳宠国际 FAQ 检索黄金集 v1：从话术库抽典型询盘问题，标注理想命中的 faq question 与事实校验点",
+  "version": 1,
+  "created_at": "2026-10-23",
+  "criteria": {
+    "retrieval_top_k": 5,
+    "gate_red_line_errors": 0
+  },
+  "cases": [
+    {
+      "id": "GS-001",
+      "query": "What is your MOQ for this product?",
+      "ideal_hit_question": "What is your MOQ for this product?",
+      "expected_facts": ["MOQ"],
+      "red_line": false
+    },
+    {
+      "id": "GS-002",
+      "query": "Can you send me a sample?",
+      "ideal_hit_question": "Can you send me a sample?",
+      "expected_facts": ["sample"],
+      "red_line": false
+    },
+    {
+      "id": "GS-003",
+      "query": "客户问我们的起订量是多少，最小订量怎么算",
+      "ideal_hit_question": "What is your MOQ for this product?",
+      "expected_facts": ["MOQ"],
+      "red_line": false
+    },
+    {
+      "id": "GS-004",
+      "query": "请报一下这款智能猫砂盆的最低价",
+      "ideal_hit_question": "What is the best price you can offer?",
+      "expected_facts": ["price"],
+      "red_line": true
+    },
+    {
+      "id": "GS-005",
+      "query": "想了解一下你们的产品资料和最新目录",
+      "ideal_hit_question": "Do you have a PDF catalog for all 2026 new arrivals?",
+      "expected_facts": ["catalog"],
+      "red_line": false
+    },
+    {
+      "id": "GS-006",
+      "query": "I am interested in your product, please contact me.",
+      "ideal_hit_question": "\"I am interested in your product, please contact me.\"（系统默认第一句）",
+      "expected_facts": ["contact"],
+      "red_line": false
+    }
+  ]
+}
