@@ -1,26 +1,22 @@
-"""管理台 API：审核工作流 + 打标 + RBAC 权限。
-
-启动：
-  uv run uvicorn app.admin_api:app --port 8000
-
-角色测试（X-User-Id 头）：
-  curl -H "X-User-Id: u_admin" http://localhost:8000/faq?status=draft
-  curl -X POST -H "X-User-Id: u_reviewer" -H "Content-Type: application/json" \
-    http://localhost:8000/faq/1/approve
-
-数据级权限：agent（客服）只读 public+internal；confidential 需 editor 以上。
-"""
+"""Unified FastAPI application for admin, knowledge Q&A and import."""
 from __future__ import annotations
 
+import json
 import os
 from datetime import datetime, timezone
+from urllib.parse import urlparse
 
 import psycopg
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-from src.auth.rbac import User, data_permission_clause, get_current_user, require_role
+from src.auth.rbac import (
+    User,
+    data_permission_clause,
+    get_current_user,
+    require_role,
+)
 from src.config import RAG_DSN as DSN, MAX_UPLOAD_MB
 from src.config import SESSION_TTL_HOURS, LOGIN_LOCK_MINUTES
 from fastapi.responses import JSONResponse
@@ -32,9 +28,38 @@ _static_dir = pathlib.Path(__file__).resolve().parent / "static"
 app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
 
 
+@app.get("/", include_in_schema=False)
+def root():
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse("/admin")
+
+
+@app.middleware("http")
+async def csrf_guard(request: Request, call_next):
+    """Reject cross-origin state changes that ride on a cookie session."""
+    if request.method not in {"GET", "HEAD", "OPTIONS"}:
+        has_cookie_session = bool(request.cookies.get("kh_session"))
+        if has_cookie_session and request.url.path != "/auth/login":
+            expected = request.url.netloc
+            origin = request.headers.get("origin", "")
+            csrf_header = request.headers.get("x-knowhow-csrf", "")
+            if csrf_header != "1":
+                return JSONResponse({"detail": "缺少 CSRF 校验头"}, status_code=403)
+            if origin and urlparse(origin).netloc != expected:
+                return JSONResponse({"detail": "拒绝跨站请求"}, status_code=403)
+    return await call_next(request)
+
+
 @app.get("/admin", include_in_schema=False)
 def admin_panel():
     """后台管理端评测审计面板（单页 HTML）。"""
+    from fastapi.responses import FileResponse
+    return FileResponse(str(_static_dir / "admin.html"))
+
+
+@app.get("/agent", include_in_schema=False)
+def customer_service_agent():
+    """客服辅助入口；与后台共用认证和数据权限。"""
     from fastapi.responses import FileResponse
     return FileResponse(str(_static_dir / "admin.html"))
 
@@ -74,10 +99,117 @@ class FAQUpdate(BaseModel):
     risk_level: str | None = None
     action_level: str | None = None
     permission: str | None = None
+    customer_ready: bool | None = None
 
 
 class ReviewAction(BaseModel):
     comment: str | None = None
+
+
+class OfferReviewAction(BaseModel):
+    comment: str | None = None
+
+
+class AskBody(BaseModel):
+    question: str
+    channel: str = "web"
+    customer_id: str = ""
+    sku_code: str = ""
+
+
+class FeedbackBody(BaseModel):
+    inquiry_id: str
+    verdict: str
+    reason: str = ""
+    corrected_answer: str = ""
+
+
+# ============ 知识问答（受认证、可见域和 customer_ready 约束） ============
+
+@app.post("/v1/ask")
+def ask(body: AskBody, user: User = Depends(get_current_user)):
+    from dataclasses import asdict
+    from src.core.knowledge import ask_question
+    with _conn() as conn:
+        result = ask_question(
+            conn, user, body.question.strip(), channel=body.channel,
+            customer_id=body.customer_id, sku_code=body.sku_code,
+            fact_dsn=DSN,
+        )
+    return asdict(result)
+
+
+@app.post("/v1/inquiry")
+def inquiry_compat(body: AskBody, user: User = Depends(get_current_user)):
+    """Compatibility alias for clients still calling the tutorial endpoint."""
+    return ask(body, user)
+
+
+@app.post("/api/v1/feedback")
+def submit_feedback(body: FeedbackBody,
+                    user: User = Depends(require_role("agent"))):
+    """Record operator judgement against one immutable Q&A audit record."""
+    if body.verdict not in {"correct", "incorrect", "needs_review"}:
+        raise HTTPException(400, "verdict 必须是 correct/incorrect/needs_review")
+    with _conn() as conn, conn.cursor() as cur:
+        cur.execute("""
+            SELECT id, citations FROM audit_log
+            WHERE inquiry_id=%s
+        """, (body.inquiry_id,))
+        audit = cur.fetchone()
+        if not audit:
+            raise HTTPException(404, "问答记录不存在")
+        audit_id, citations = audit
+        feedback_text = json.dumps({
+            "verdict": body.verdict,
+            "reason": body.reason,
+            "by": user.name,
+        }, ensure_ascii=False)
+        cur.execute(
+            "UPDATE audit_log SET user_feedback=%s WHERE id=%s",
+            (feedback_text, audit_id),
+        )
+        issue_id = None
+        if body.verdict != "correct":
+            faq_id = None
+            if citations:
+                faq_id = int(citations[0]) if isinstance(citations, list) and citations else None
+            cur.execute("""
+                INSERT INTO issue
+                  (faq_id, inquiry_id, feedback, resolution, status,
+                   created_by, related_audit)
+                VALUES (%s,%s,%s,%s,'open',%s,%s)
+                RETURNING id
+            """, (
+                faq_id, body.inquiry_id, feedback_text,
+                body.corrected_answer, user.name, audit_id,
+            ))
+            issue_id = cur.fetchone()[0]
+        conn.commit()
+    return {"ok": True, "inquiry_id": body.inquiry_id,
+            "issue_id": issue_id, "verdict": body.verdict}
+
+
+@app.get("/api/v1/feedback/issues")
+def list_feedback_issues(status: str | None = "open",
+                         user: User = Depends(require_role("reviewer"))):
+    where, params = [], []
+    if status:
+        where.append("i.status=%s"); params.append(status)
+    with _conn() as conn, conn.cursor() as cur:
+        cur.execute(f"""
+            SELECT i.id, i.inquiry_id, i.feedback, i.resolution, i.status,
+                   i.created_by, i.created_at, a.question, a.answer,
+                   a.citations
+            FROM issue i
+            LEFT JOIN audit_log a ON a.id=i.related_audit
+            {"WHERE " + " AND ".join(where) if where else ""}
+            ORDER BY i.id DESC LIMIT 200
+        """, params)
+        rows = cur.fetchall()
+    cols = ["id", "inquiry_id", "feedback", "resolution", "status",
+            "created_by", "created_at", "question", "answer", "citations"]
+    return [dict(zip(cols, row)) for row in rows]
 
 
 # ============ FAQ 查询（含数据级权限过滤） ============
@@ -98,7 +230,8 @@ def list_faq(status: str | None = Query(default=None),
         where.append("f.question ILIKE %s"); params.append(f"%{q}%")
     sql = f"""
         SELECT id, question, answer, category, tags, status,
-               risk_level, action_level, permission, version
+               risk_level, action_level, permission, customer_ready,
+               version, published_version
         FROM faq f WHERE {' AND '.join(where)}
         ORDER BY f.id LIMIT 100
     """
@@ -106,7 +239,8 @@ def list_faq(status: str | None = Query(default=None),
         cur.execute(sql, params)
         rows = cur.fetchall()
     cols = ["id", "question", "answer", "category", "tags", "status",
-            "risk_level", "action_level", "permission", "version"]
+            "risk_level", "action_level", "permission", "customer_ready",
+            "version", "published_version"]
     return [dict(zip(cols, r)) for r in rows]
 
 
@@ -116,7 +250,8 @@ def get_faq(faq_id: int, user: User = Depends(get_current_user)):
         cur.execute(f"""
             SELECT id, question, answer, category, tags, sources, status,
                    valid_from, valid_until, permission, risk_level,
-                   action_level, version, approved_by, approved_at, updated_at
+                   action_level, customer_ready, version, published_version,
+                   approved_by, approved_at, updated_at
             FROM faq WHERE id=%s AND {data_permission_clause(user, 'faq')}
         """, (faq_id,))
         row = cur.fetchone()
@@ -124,7 +259,8 @@ def get_faq(faq_id: int, user: User = Depends(get_current_user)):
         raise HTTPException(404, "FAQ 不存在或无权查看")
     cols = ["id", "question", "answer", "category", "tags", "sources", "status",
             "valid_from", "valid_until", "permission", "risk_level",
-            "action_level", "version", "approved_by", "approved_at", "updated_at"]
+            "action_level", "customer_ready", "version", "published_version",
+            "approved_by", "approved_at", "updated_at"]
     return dict(zip(cols, row))
 
 
@@ -133,7 +269,7 @@ def get_faq(faq_id: int, user: User = Depends(get_current_user)):
 @app.put("/faq/{faq_id}")
 def update_faq(faq_id: int, body: FAQUpdate,
                user: User = Depends(require_role("editor"))):
-    """编辑知识卡；改字段 → version+1（历史可追溯）。"""
+    """Create a candidate edit while retaining the last published snapshot."""
     fields, params = [], []
     for k, v in body.model_dump(exclude_none=True).items():
         fields.append(f"{k} = %s")
@@ -141,9 +277,25 @@ def update_faq(faq_id: int, body: FAQUpdate,
     if not fields:
         raise HTTPException(400, "无更新字段")
     fields.append("version = version + 1")
-    fields.append("status = 'draft'")  # 改过即回到待审核
+    fields.append("status = 'draft'")
+    if body.question is not None or body.answer is not None:
+        fields.append("embedding = NULL")
     params.append(faq_id)
     with _conn() as conn, conn.cursor() as cur:
+        # Preserve the last published version before an approved row becomes
+        # a review candidate.
+        cur.execute("""
+            INSERT INTO faq_version
+              (faq_id, version, snapshot, status, created_by, approved_by,
+               approved_at)
+            SELECT id, version,
+                   to_jsonb(f) - 'embedding' - 'published_embedding'
+                     - 'published_snapshot',
+                   'superseded', approved_by, approved_by, approved_at
+            FROM faq f
+            WHERE id=%s AND status='approved'
+            ON CONFLICT (faq_id, version) DO NOTHING
+        """, (faq_id,))
         cur.execute(f"UPDATE faq SET {', '.join(fields)} WHERE id=%s "
                     f"AND {data_permission_clause(user, 'faq')}", params)
         conn.commit()
@@ -159,7 +311,8 @@ def set_tags(faq_id: int, body: FAQUpdate,
              user: User = Depends(require_role("editor"))):
     """5 维打标：category / tags / risk_level / action_level / permission。"""
     upd, params = [], []
-    for col in ("category", "tags", "risk_level", "action_level", "permission"):
+    for col in ("category", "tags", "risk_level", "action_level", "permission",
+                "customer_ready"):
         v = getattr(body, col)
         if v is not None:
             upd.append(f"{col} = %s")
@@ -168,7 +321,19 @@ def set_tags(faq_id: int, body: FAQUpdate,
         raise HTTPException(400, "至少提供一维标签")
     params.append(faq_id)
     with _conn() as conn, conn.cursor() as cur:
-        cur.execute(f"UPDATE faq SET {', '.join(upd)} WHERE id=%s "
+        cur.execute("""
+            INSERT INTO faq_version
+              (faq_id, version, snapshot, status, created_by, approved_by,
+               approved_at)
+            SELECT id, version,
+                   to_jsonb(f) - 'embedding' - 'published_embedding'
+                     - 'published_snapshot',
+                   'superseded', approved_by, approved_by, approved_at
+            FROM faq f
+            WHERE id=%s AND status='approved'
+            ON CONFLICT (faq_id, version) DO NOTHING
+        """, (faq_id,))
+        cur.execute(f"UPDATE faq SET {', '.join(upd)}, status='draft' WHERE id=%s "
                     f"AND {data_permission_clause(user, 'faq')}", params)
         conn.commit()
         if cur.rowcount == 0:
@@ -176,21 +341,232 @@ def set_tags(faq_id: int, body: FAQUpdate,
     return {"ok": True, "id": faq_id, "tagged": [u.split(' = ')[0] for u in upd]}
 
 
+# ============ 产品事实审核（发布后才能进入实时事实工具） ============
+
+@app.get("/products")
+def list_products(status: str | None = None,
+                  q: str | None = None,
+                  user: User = Depends(require_role("editor"))):
+    where, params = [], []
+    if status:
+        where.append("s.status=%s"); params.append(status)
+    if q:
+        where.append("(s.sku_code ILIKE %s OR s.name_zh ILIKE %s "
+                     "OR s.name_en ILIKE %s)")
+        params.extend([f"%{q}%"] * 3)
+    sql = f"""
+        SELECT s.id, s.sku_code, s.category, s.name_zh, s.name_en,
+               s.status, s.version, s.valid_until,
+               count(DISTINCT v.id) AS variant_count,
+               count(DISTINCT o.id) FILTER (
+                 WHERE o.status='approved' AND o.valid_until >= CURRENT_DATE
+               ) AS active_offer_count
+        FROM sku s
+        LEFT JOIN variant v ON v.sku_id=s.id
+        LEFT JOIN offer o ON o.variant_id=v.id
+        {"WHERE " + " AND ".join(where) if where else ""}
+        GROUP BY s.id
+        ORDER BY s.id DESC LIMIT 200
+    """
+    with _conn() as conn, conn.cursor() as cur:
+        cur.execute(sql, params)
+        rows = cur.fetchall()
+    cols = ["id", "sku_code", "category", "name_zh", "name_en", "status",
+            "version", "valid_until", "variant_count", "active_offer_count"]
+    return [dict(zip(cols, row)) for row in rows]
+
+
+@app.post("/products/{sku_id}/approve")
+def approve_product(sku_id: int,
+                    body: ReviewAction | None = None,
+                    user: User = Depends(require_role("reviewer"))):
+    with _conn() as conn, conn.cursor() as cur:
+        cur.execute("""
+            UPDATE sku
+            SET status='approved', approved_by=%s, approved_at=now(),
+                version=version+1
+            WHERE id=%s AND status='draft'
+            RETURNING sku_code
+        """, (user.name, sku_id))
+        row = cur.fetchone()
+        conn.commit()
+    if not row:
+        raise HTTPException(409, "仅 draft 产品可审核通过")
+    return {"ok": True, "id": sku_id, "sku_code": row[0],
+            "status": "approved", "by": user.name}
+
+
+@app.post("/products/{sku_id}/reject")
+def reject_product(sku_id: int,
+                   body: ReviewAction | None = None,
+                   user: User = Depends(require_role("reviewer"))):
+    with _conn() as conn, conn.cursor() as cur:
+        cur.execute("""
+            UPDATE sku SET status='deprecated', approved_by=%s,
+                           approved_at=now(), version=version+1
+            WHERE id=%s AND status='draft'
+        """, (user.name, sku_id))
+        conn.commit()
+        if cur.rowcount == 0:
+            raise HTTPException(409, "仅 draft 产品可驳回")
+    return {"ok": True, "id": sku_id, "status": "deprecated"}
+
+
+@app.get("/offers")
+def list_offers(status: str | None = None,
+                q: str | None = None,
+                user: User = Depends(require_role("editor"))):
+    where, params = [], []
+    if status:
+        where.append("o.status=%s"); params.append(status)
+    if q:
+        where.append("(s.sku_code ILIKE %s OR s.name_en ILIKE %s "
+                     "OR s.name_zh ILIKE %s)")
+        params.extend([f"%{q}%"] * 3)
+    sql = f"""
+        SELECT o.id, s.id AS sku_id, s.sku_code, v.variant_code,
+               s.name_zh, s.name_en, o.currency, o.unit_price, o.moq,
+               o.lead_time_days, o.freight_mode, o.valid_until, o.status,
+               o.version, o.approved_by, o.approved_at
+        FROM offer o
+        JOIN variant v ON v.id=o.variant_id
+        JOIN sku s ON s.id=v.sku_id
+        {"WHERE " + " AND ".join(where) if where else ""}
+        ORDER BY o.id DESC LIMIT 200
+    """
+    with _conn() as conn, conn.cursor() as cur:
+        cur.execute(sql, params)
+        rows = cur.fetchall()
+    cols = ["id", "sku_id", "sku_code", "variant_code", "name_zh", "name_en",
+            "currency", "unit_price", "moq", "lead_time_days", "freight_mode",
+            "valid_until", "status", "version", "approved_by", "approved_at"]
+    return [dict(zip(cols, row)) for row in rows]
+
+
+@app.post("/offers/{offer_id}/approve")
+def approve_offer(offer_id: int,
+                  body: OfferReviewAction | None = None,
+                  user: User = Depends(require_role("reviewer"))):
+    """Publish one price atomically and expire the prior active price."""
+    with _conn() as conn, conn.cursor() as cur:
+        cur.execute("""
+            SELECT o.variant_id, o.valid_until, s.status
+            FROM offer o
+            JOIN variant v ON v.id=o.variant_id
+            JOIN sku s ON s.id=v.sku_id
+            WHERE o.id=%s AND o.status='draft'
+            FOR UPDATE
+        """, (offer_id,))
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(409, "仅 draft 报价可审核通过")
+        variant_id, valid_until, sku_status = row
+        if sku_status != "approved":
+            raise HTTPException(409, "请先审核通过对应产品")
+        if valid_until is None or valid_until.isoformat() < (
+            datetime.now(timezone.utc).date().isoformat()
+        ):
+            raise HTTPException(409, "报价已过有效期，不能发布")
+        cur.execute("""
+            UPDATE offer SET status='expired', version=version+1
+            WHERE variant_id=%s AND status='approved'
+        """, (variant_id,))
+        cur.execute("""
+            UPDATE offer
+            SET status='approved', approved_by=%s, approved_at=now(),
+                version=version+1
+            WHERE id=%s
+        """, (user.name, offer_id))
+        conn.commit()
+    return {"ok": True, "id": offer_id, "status": "approved",
+            "by": user.name}
+
+
+@app.post("/offers/{offer_id}/reject")
+def reject_offer(offer_id: int,
+                 body: OfferReviewAction | None = None,
+                 user: User = Depends(require_role("reviewer"))):
+    with _conn() as conn, conn.cursor() as cur:
+        cur.execute("""
+            UPDATE offer SET status='rejected', approved_by=%s,
+                             approved_at=now(), version=version+1
+            WHERE id=%s AND status='draft'
+        """, (user.name, offer_id))
+        conn.commit()
+        if cur.rowcount == 0:
+            raise HTTPException(409, "仅 draft 报价可驳回")
+    return {"ok": True, "id": offer_id, "status": "rejected"}
+
+
 # ============ 审核工作流（审核员以上） ============
 
 @app.post("/faq/{faq_id}/approve")
 def approve_faq(faq_id: int, body: ReviewAction | None = None,
                 user: User = Depends(require_role("reviewer"))):
-    """审核通过：draft → approved，记录审批人。"""
+    """Approve a candidate and atomically publish its immutable snapshot."""
     with _conn() as conn, conn.cursor() as cur:
         cur.execute("""
-            UPDATE faq SET status='approved', approved_by=%s, approved_at=now()
-            WHERE id=%s AND status='draft'
-        """, (user.name, faq_id))
-        conn.commit()
-        if cur.rowcount == 0:
+            SELECT id, version, question, answer, category, tags, sources,
+                   risk_level, action_level, permission, customer_ready,
+                   valid_from, valid_until, embedding
+            FROM faq WHERE id=%s AND status='draft' FOR UPDATE
+        """, (faq_id,))
+        row = cur.fetchone()
+        if not row:
             raise HTTPException(409, "仅 draft 状态可审核通过")
-    return {"ok": True, "id": faq_id, "status": "approved", "by": user.name}
+        cols = ["id", "version", "question", "answer", "category", "tags",
+                "sources", "risk_level", "action_level", "permission",
+                "customer_ready", "valid_from", "valid_until", "embedding"]
+        item = dict(zip(cols, row))
+        embedding = item.pop("embedding")
+        if embedding is None:
+            try:
+                from src.providers.embedding_provider import get_embedding_provider
+                embedding = get_embedding_provider().embed(
+                    [item["question"] + "\n" + item["answer"]]
+                )[0]
+            except Exception as exc:
+                raise HTTPException(
+                    503, f"无法生成知识向量，暂不能发布：{exc}"
+                ) from exc
+        if isinstance(embedding, (list, tuple)):
+            vector_text = "[" + ",".join(f"{float(x):.8f}" for x in embedding) + "]"
+        elif isinstance(embedding, str):
+            vector_text = embedding
+        else:
+            vector_text = "[" + ",".join(
+                f"{float(x):.8f}" for x in list(embedding)
+            ) + "]"
+        snapshot = json.dumps({
+            k: (v.isoformat() if hasattr(v, "isoformat") else v)
+            for k, v in item.items() if k != "id"
+        }, ensure_ascii=False)
+        cur.execute("""
+            UPDATE faq_version
+            SET status='superseded'
+            WHERE faq_id=%s AND status='approved'
+        """, (faq_id,))
+        cur.execute("""
+            INSERT INTO faq_version
+              (faq_id, version, snapshot, status, created_by, approved_by,
+               approved_at)
+            VALUES (%s,%s,%s::jsonb,'approved',%s,%s,now())
+            ON CONFLICT (faq_id, version) DO UPDATE
+              SET snapshot=EXCLUDED.snapshot, status='approved',
+                  approved_by=EXCLUDED.approved_by, approved_at=now()
+        """, (faq_id, item["version"], snapshot, user.name, user.name))
+        cur.execute("""
+            UPDATE faq
+            SET status='approved', approved_by=%s, approved_at=now(),
+                embedding=%s::vector, published_snapshot=%s::jsonb,
+                published_embedding=%s::vector, published_version=version
+            WHERE id=%s
+        """, (user.name, vector_text, snapshot, vector_text, faq_id))
+        conn.commit()
+    return {
+        "ok": True, "id": faq_id, "status": "approved",
+        "published_version": item["version"], "by": user.name,
+    }
 
 
 @app.post("/faq/{faq_id}/reject")
@@ -199,10 +575,11 @@ def reject_faq(faq_id: int, body: ReviewAction | None = None,
     """审核驳回：draft → rejected（保持可编辑）。"""
     with _conn() as conn, conn.cursor() as cur:
         cur.execute("UPDATE faq SET status='deprecated', approved_by=%s, "
-                    "approved_at=now() WHERE id=%s", (user.name, faq_id))
+                    "approved_at=now() WHERE id=%s AND status='draft'",
+                    (user.name, faq_id))
         conn.commit()
         if cur.rowcount == 0:
-            raise HTTPException(404, "FAQ 不存在")
+            raise HTTPException(409, "仅 draft 状态可驳回")
     return {"ok": True, "id": faq_id, "status": "deprecated"}
 
 
@@ -320,13 +697,16 @@ GOLDSET_PATH = os.environ.get("GOLDSET_PATH",
 
 
 @app.post("/eval/run")
-def run_eval(dev: bool = True,
+def run_eval(dev: bool = False,
              user: User = Depends(require_role("reviewer"))):
-    """触发一次评测（默认 dev 模式：检索不过滤审核状态），结果持久化 eval_report。"""
+    """触发一次评测；生产门禁默认只使用已发布快照。"""
     from src.core import eval_runner
     cases = eval_runner.load_goldset(GOLDSET_PATH)
     result = eval_runner.run(cases, DSN, include_draft=dev)
-    rid = eval_runner.save_report(result, GOLDSET_PATH, DSN)
+    rid = eval_runner.save_report(
+        result, GOLDSET_PATH, DSN,
+        mode="dev" if dev else "production",
+    )
     return {"report_id": rid, "gate_passed": result["gate_passed"],
             "metrics": {k: v for k, v in result["metrics"].items()
                         if k != "retrieval"},
@@ -340,13 +720,13 @@ def list_eval_reports(limit: int = Query(default=20, le=100),
     """评测历史（趋势看板数据）。"""
     with _conn() as conn, conn.cursor() as cur:
         cur.execute("""
-            SELECT id, goldset_name, backend, recall_at_5, precision_at_5,
+            SELECT id, goldset_name, backend, mode, recall_at_5, precision_at_5,
                    mrr_at_5, fact_accuracy, red_line_errors, gate_passed,
                    total_cases, hit_cases, created_at
             FROM eval_report ORDER BY id DESC LIMIT %s
         """, (limit,))
         rows = cur.fetchall()
-    cols = ["id", "goldset_name", "backend", "recall_at_5", "precision_at_5",
+    cols = ["id", "goldset_name", "backend", "mode", "recall_at_5", "precision_at_5",
             "mrr_at_5", "fact_accuracy", "red_line_errors", "gate_passed",
             "total_cases", "hit_cases", "created_at"]
     return [dict(zip(cols, r)) for r in rows]
@@ -358,7 +738,7 @@ def get_eval_report(report_id: int,
     """报告明细：含 per-case 召回审计（query/hit/top5/rr）与红线详情。"""
     with _conn() as conn, conn.cursor() as cur:
         cur.execute("""
-            SELECT id, goldset_name, backend, recall_at_5, precision_at_5,
+            SELECT id, goldset_name, backend, mode, recall_at_5, precision_at_5,
                    mrr_at_5, fact_accuracy, red_line_errors, gate_passed,
                    total_cases, hit_cases, detail_json, created_at
             FROM eval_report WHERE id=%s
@@ -366,7 +746,7 @@ def get_eval_report(report_id: int,
         row = cur.fetchone()
     if not row:
         raise HTTPException(404, "评测报告不存在")
-    cols = ["id", "goldset_name", "backend", "recall_at_5", "precision_at_5",
+    cols = ["id", "goldset_name", "backend", "mode", "recall_at_5", "precision_at_5",
             "mrr_at_5", "fact_accuracy", "red_line_errors", "gate_passed",
             "total_cases", "hit_cases", "detail_json", "created_at"]
     d = dict(zip(cols, row))
@@ -432,6 +812,53 @@ class IngestRunBody(BaseModel):
     config: str | None = None    # 映射配置名，默认 jiacong_facts
 
 
+class SourceAnalyzeBody(BaseModel):
+    path: str
+    target: str = "product"
+
+
+class ImportPreviewBody(BaseModel):
+    path: str
+    template_key: str
+    target: str | None = None
+    overrides: dict[str, str] = {}
+    selected_sheets: list[str] = Field(default_factory=list)
+    limit: int = Field(default=50, ge=1, le=500)
+
+
+class ImportExecuteBody(BaseModel):
+    path: str
+    template_key: str
+    target: str | None = None
+    overrides: dict[str, str] = {}
+    selected_sheets: list[str] = Field(default_factory=list)
+
+
+class ImportTemplateBody(BaseModel):
+    config_key: str
+    description: str = ""
+    config: dict
+    active: bool = True
+
+
+def _mapping_config(config_key: str) -> dict:
+    from src.config_loader import get_mapping
+    try:
+        return get_mapping(config_key, DSN)
+    except (FileNotFoundError, KeyError):
+        with _conn() as conn, conn.cursor() as cur:
+            cur.execute("""
+                SELECT config FROM mapping_config
+                WHERE config_key=%s AND active
+            """, (config_key,))
+            row = cur.fetchone()
+        if not row:
+            raise HTTPException(404, f"导入模板不存在: {config_key}")
+        config = row[0] if isinstance(row[0], dict) else json.loads(row[0])
+        config["_source"] = "db"
+        return config
+
+
 @app.post("/ingest/run")
 def ingest_run(body: IngestRunBody,
                user: User = Depends(require_role("editor"))):
@@ -444,6 +871,117 @@ def ingest_run(body: IngestRunBody,
     except Exception as e:
         raise HTTPException(500, f"入录失败: {e}")
     return {"ok": True, "by": user.name, **result}
+
+
+@app.get("/api/v1/import/templates")
+def import_templates(user: User = Depends(require_role("editor"))):
+    from src.config_loader import CONFIG_DIR
+    templates: dict[str, dict] = {}
+    if CONFIG_DIR.exists():
+        for path in CONFIG_DIR.glob("*.yaml"):
+            try:
+                cfg = _mapping_config(path.stem)
+                templates[path.stem] = {
+                    "key": path.stem,
+                    "source": cfg.get("_source"),
+                    "description": cfg.get("description", ""),
+                    "config": cfg,
+                }
+            except Exception:
+                continue
+    with _conn() as conn, conn.cursor() as cur:
+        cur.execute("""
+            SELECT config_key, description, config, version, active
+            FROM mapping_config WHERE active ORDER BY config_key
+        """)
+        for key, description, cfg, version, active in cur.fetchall():
+            value = cfg if isinstance(cfg, dict) else json.loads(cfg)
+            templates[key] = {
+                "key": key, "source": "db", "description": description,
+                "version": version, "active": active, "config": value,
+            }
+    return {"templates": list(templates.values())}
+
+
+@app.post("/api/v1/import/templates")
+def save_import_template(body: ImportTemplateBody,
+                         user: User = Depends(require_role("reviewer"))):
+    if not body.config_key.strip():
+        raise HTTPException(400, "config_key 不能为空")
+    with _conn() as conn, conn.cursor() as cur:
+        cur.execute("""
+            INSERT INTO mapping_config
+              (config_key, config, description, version, active, updated_by)
+            VALUES (%s,%s::jsonb,%s,1,%s,%s)
+            ON CONFLICT (config_key) DO UPDATE
+              SET config=EXCLUDED.config,
+                  description=EXCLUDED.description,
+                  version=mapping_config.version + 1,
+                  active=EXCLUDED.active,
+                  updated_by=EXCLUDED.updated_by,
+                  updated_at=now()
+            RETURNING config_key, version
+        """, (body.config_key.strip(),
+              json.dumps(body.config, ensure_ascii=False),
+              body.description, body.active, user.name))
+        key, version = cur.fetchone()
+        cur.execute("""
+            INSERT INTO mapping_config_version
+              (config_key, version, config, description, created_by)
+            VALUES (%s,%s,%s::jsonb,%s,%s)
+            ON CONFLICT (config_key, version) DO NOTHING
+        """, (key, version, json.dumps(body.config, ensure_ascii=False),
+              body.description, user.name))
+        conn.commit()
+    return {"ok": True, "config_key": key, "version": version}
+
+
+@app.post("/api/v1/import/analyze")
+def analyze_import_source(body: SourceAnalyzeBody,
+                          user: User = Depends(require_role("editor"))):
+    from src.ingest.studio import analyze_source, suggest_mapping
+    try:
+        result = analyze_source(body.path)
+        for sheet in result["sheets"]:
+            sheet["suggested_mapping"] = suggest_mapping(
+                sheet.get("headers", []), body.target
+            )
+        return result
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@app.post("/api/v1/import/preview")
+def preview_import_data(body: ImportPreviewBody,
+                        user: User = Depends(require_role("editor"))):
+    from src.ingest.studio import preview_import
+    cfg = _mapping_config(body.template_key)
+    try:
+        return preview_import(body.path, cfg, body.target,
+                              body.overrides, body.limit,
+                              body.selected_sheets)
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@app.post("/api/v1/import/execute")
+def execute_import_data(body: ImportExecuteBody,
+                        user: User = Depends(require_role("editor"))):
+    from src.ingest.studio import execute_import
+    cfg = _mapping_config(body.template_key)
+    try:
+        result = execute_import(
+            body.path, cfg, DSN, body.target, body.overrides, user.name,
+            body.selected_sheets,
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(400, str(exc)) from exc
+    if not result.get("ok"):
+        raise HTTPException(422, {
+            "message": "预检未通过，未写入数据库",
+            "preview": result,
+        })
+    return result
 
 
 @app.get("/batches/{batch_id}")
@@ -497,6 +1035,7 @@ class UserCreate(BaseModel):
     id: str
     name: str
     role: str
+    initial_password: str | None = None
 
 
 class RoleUpdate(BaseModel):
@@ -507,7 +1046,7 @@ class RoleUpdate(BaseModel):
 def list_users_api(user: User = Depends(require_role("admin"))):
     """用户列表（含角色），供管理端权限分级展示。"""
     from src.auth import rbac
-    return {"users": rbac.list_users()}
+    return {"users": rbac.list_users(DSN)}
 
 
 @app.post("/users")
@@ -516,10 +1055,16 @@ def create_user_api(body: UserCreate,
     """新建用户并分配角色。"""
     from src.auth import rbac
     try:
-        u = rbac.create_user(body.id, body.name, body.role)
+        u, temp_password = rbac.create_user(
+            body.id, body.name, body.role, body.initial_password, DSN
+        )
     except ValueError as e:
         raise HTTPException(400, str(e))
-    return {"ok": True, "user": {"id": u.id, "name": u.name, "role": u.role}}
+    return {
+        "ok": True,
+        "user": {"id": u.id, "name": u.name, "role": u.role},
+        "temporary_password": temp_password,
+    }
 
 
 @app.put("/users/{uid}/role")
@@ -528,7 +1073,7 @@ def change_user_role(uid: str, body: RoleUpdate,
     """变更用户角色（权限分级核心操作）。"""
     from src.auth import rbac
     try:
-        u = rbac.update_user_role(uid, body.role)
+        u = rbac.update_user_role(uid, body.role, DSN)
     except ValueError as e:
         raise HTTPException(400, str(e))
     return {"ok": True, "user": {"id": u.id, "name": u.name, "role": u.role}}

@@ -109,12 +109,16 @@
     </div>
     <nav class="menu">
       <div class="menu-group">数据管理</div>
+      <div class="menu-item" data-page="agent" onclick="showPage('agent')">
+        <span class="m-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 10h8M8 14h5"/><path d="M21 12a8 8 0 0 1-8 8H4l2-3a8 8 0 1 1 15-5z"/></svg></span>客服辅助</div>
       <div class="menu-item active" data-page="ingest" onclick="showPage('ingest')">
         <span class="m-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg></span>数据入录</div>
 
       <div class="menu-group">知识管理</div>
       <div class="menu-item" data-page="faq" onclick="showPage('faq')">
         <span class="m-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h9l5 5v15H6z"/><path d="M14 2v5h5"/><path d="M9 12h7M9 16h5"/></svg></span>知识卡管理</div>
+      <div class="menu-item" data-page="products" onclick="showPage('products')">
+        <span class="m-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7 12 3 4 7l8 4 8-4z"/><path d="M4 7v10l8 4 8-4V7M12 11v10"/></svg></span>产品与报价</div>
 
       <div class="menu-group">质量保障</div>
       <div class="menu-item" data-page="trend" onclick="showPage('trend')">
@@ -153,14 +157,22 @@
       <!-- ===== 页面：数据入录 ===== -->
       <section class="page active" id="page-ingest">
         <div class="card">
-          <h3>上传原始数据 → 批次入录（editor 以上）</h3>
+          <h3>Import Studio · 上传、预检、确认入录</h3>
           <div class="toolbar" style="margin-bottom:6px;">
             <input type="file" id="ingest-file" class="select" accept=".xlsx,.xls,.json,.docx,.csv">
-            <select class="select" id="ingest-kind"><option value="facts">产品图鉴 facts（xlsx）</option><option value="faq">话术库 faq（json）</option></select>
-            <select class="select" id="ingest-config"><option value="jiacong_facts">jiacong_facts 映射</option></select>
-            <button class="btn" id="btn-upload" onclick="uploadAndRun()">上传并入录</button>
+            <select class="select" id="ingest-kind" onchange="onImportModeChange()"><option value="facts">产品图鉴 facts（xlsx/csv）</option><option value="faq">话术库 faq（json）</option></select>
+            <select class="select" id="ingest-config" onchange="onTemplateChange()"><option value="jiacong_facts">jiacong_facts 映射</option></select>
+            <button class="btn" id="btn-analyze" onclick="uploadAndAnalyze()">上传并分析</button>
           </div>
           <div id="ingest-status" style="font-size:13px;color:var(--muted);"></div>
+          <div id="source-summary" style="font-size:13px;color:var(--muted);margin-top:8px;"></div>
+          <div id="mapping-editor" style="margin-top:12px;"></div>
+          <div class="toolbar" id="ingest-actions" style="margin-top:12px;display:none;">
+            <button class="btn btn-ghost" onclick="previewImport()">预检数据</button>
+            <button class="btn" onclick="executeImport()">确认写入草稿</button>
+            <button class="btn btn-ghost" onclick="saveMappingTemplate()">另存为导入模板</button>
+          </div>
+          <div id="ingest-preview" style="margin-top:12px;font-size:12px;"></div>
         </div>
         <div class="card">
           <h3>入录批次（原始数据留档 + 问题行审计）</h3>
@@ -169,6 +181,25 @@
             <tbody></tbody>
           </table>
         </div>
+      </section>
+
+      <!-- ===== 页面：客服辅助工作台 ===== -->
+      <section class="page" id="page-agent">
+        <div class="card">
+          <h3>客服辅助 · 检索、事实与证据</h3>
+          <div class="form-grid">
+            <div class="full"><label>客户问题</label>
+              <textarea id="agent-question" placeholder="粘贴客户原话。价格、MOQ、交期等问题会查询已审批报价；缺参数时会要求人工补充。"></textarea>
+            </div>
+            <div><label>SKU / 货号（可选）</label><input id="agent-sku" placeholder="如 JCQJZDM6-1"></div>
+            <div><label>客户标识（可选）</label><input id="agent-customer" placeholder="CRM customer id"></div>
+          </div>
+          <div class="toolbar">
+            <button class="btn" id="agent-run" onclick="askAgent()">生成客服草稿</button>
+            <span style="font-size:12px;color:var(--muted);">只检索已发布、有效、权限允许且可对客使用的知识。</span>
+          </div>
+        </div>
+        <div id="agent-result"></div>
       </section>
 
       <!-- ===== 页面：知识卡管理 ===== -->
@@ -192,6 +223,43 @@
             <th>状态</th><th>风险</th><th>动作</th><th>可见</th><th>版本</th><th style="width:170px;">操作</th></tr></thead>
             <tbody></tbody>
           </table>
+        </div>
+      </section>
+
+      <!-- ===== 页面：产品事实与报价 ===== -->
+      <section class="page" id="page-products">
+        <div class="card">
+          <h3>产品主数据 · 审核后才能用于客服</h3>
+          <div class="toolbar">
+            <select class="select" id="product-status" onchange="loadProducts()">
+              <option value="draft">待审核</option><option value="approved">已通过</option>
+              <option value="">全部</option>
+            </select>
+            <input class="select" id="product-q" placeholder="型号 / 中文名 / 英文名" style="width:240px;"
+              onkeydown="if(event.key==='Enter')loadProducts()">
+            <button class="btn btn-ghost" onclick="loadProducts()">查询</button>
+          </div>
+          <div style="overflow-x:auto;"><table id="product-table">
+            <thead><tr><th>ID</th><th>型号</th><th>名称</th><th>分类</th><th>状态</th><th>变体</th><th>有效报价</th><th>操作</th></tr></thead>
+            <tbody></tbody>
+          </table></div>
+        </div>
+        <div class="card">
+          <h3>报价事实 · 发布时替换同变体旧价</h3>
+          <div class="toolbar">
+            <select class="select" id="offer-status" onchange="loadOffers()">
+              <option value="draft">待审核</option><option value="approved">已发布</option>
+              <option value="expired">已失效</option><option value="rejected">已驳回</option>
+              <option value="">全部</option>
+            </select>
+            <input class="select" id="offer-q" placeholder="型号 / 名称" style="width:220px;"
+              onkeydown="if(event.key==='Enter')loadOffers()">
+            <button class="btn btn-ghost" onclick="loadOffers()">查询</button>
+          </div>
+          <div style="overflow-x:auto;"><table id="offer-table">
+            <thead><tr><th>ID</th><th>型号 / 变体</th><th>单价</th><th>MOQ</th><th>交期</th><th>有效期</th><th>状态</th><th>操作</th></tr></thead>
+            <tbody></tbody>
+          </table></div>
         </div>
       </section>
 
@@ -296,7 +364,7 @@
       <button class="btn" style="width:100%;margin-top:18px;padding:10px;" type="submit">登 录</button>
     </form>
     <div style="margin-top:16px;font-size:12px;color:#94a3b8;border-top:1px solid #f1f5f9;padding-top:12px;line-height:1.8;">
-      演示账号：u_admin / admin123（管理员）<br>u_reviewer / reviewer123（审核员）<br>u_editor / editor123（业务员）· u_agent / agent123（客服）
+      账号由管理员分配。生产环境必须使用强密码并完成首次改密。
     </div>
   </div>
 </div>
@@ -306,6 +374,11 @@ const API = '';  // 同源部署；跨域时改为后端地址如 http://localho
 let currentReport = null;
 let CURRENT_USER = 'u_agent';
 let CURRENT_ROLE = 'agent';
+let TEMPLATES = {};
+let CURRENT_SOURCE = null;
+let CURRENT_UPLOAD = null;
+let CURRENT_OVERRIDES = {};
+let CURRENT_SHEETS = [];
 
 const ROLE_LABEL = {agent:'客服', editor:'业务员', reviewer:'审核员', admin:'管理员'};
 const ROLE_SCOPE = {
@@ -315,7 +388,8 @@ const ROLE_SCOPE = {
   admin:'全部数据（+用户角色管理）'
 };
 const PAGE_TITLES = {
-  ingest:'数据入录', faq:'知识卡管理', trend:'评测总览', audit:'召回审计',
+  agent:'客服辅助', ingest:'数据入录', faq:'知识卡管理', products:'产品与报价',
+  trend:'评测总览', audit:'召回审计',
   redline:'红线案例', qa:'问答审计日志', users:'权限分级'
 };
 const STATUS_LABEL = {draft:'待审核', approved:'已通过', deprecated:'已驳回/下线'};
@@ -336,8 +410,35 @@ function showApp(){
   document.getElementById('login-view').style.display = 'none';
   document.getElementById('app-view').style.display = 'flex';
   document.getElementById('cur-user').textContent = CURRENT_USER + ' · ' + (ROLE_LABEL[CURRENT_ROLE]||CURRENT_ROLE);
+  applyRoleVisibility();
 }
-function initApp(){ showPage('ingest'); loadBatches(); loadMapping(); initEvalViews(); loadUsers(); }
+function initApp(){
+  showPage(CURRENT_ROLE === 'agent' || location.pathname === '/agent'
+    ? 'agent' : 'ingest');
+  const level = {agent:0,editor:1,reviewer:2,admin:3}[CURRENT_ROLE] || 0;
+  if(level >= 1){ loadBatches(); loadMapping(); }
+  if(level >= 2){ initEvalViews(); }
+  if(level >= 3){ loadUsers(); }
+}
+function applyRoleVisibility(){
+  const level = {agent:0,editor:1,reviewer:2,admin:3}[CURRENT_ROLE] || 0;
+  const minimum = {ingest:1,products:1,trend:2,audit:2,redline:2,qa:2,users:3};
+  document.querySelectorAll('.menu-item[data-page]').forEach(item=>{
+    const need = minimum[item.dataset.page] ?? 0;
+    item.style.display = level >= need ? '' : 'none';
+  });
+  document.querySelectorAll('.menu-group').forEach(group=>{
+    let item = group.nextElementSibling;
+    let visible = false;
+    while(item && !item.classList.contains('menu-group')){
+      if(item.classList.contains('menu-item') && item.style.display !== 'none'){
+        visible = true;
+      }
+      item = item.nextElementSibling;
+    }
+    group.style.display = visible ? '' : 'none';
+  });
+}
 
 async function doLogin(ev){
   ev.preventDefault();
@@ -362,7 +463,7 @@ async function doLogin(ev){
 }
 
 async function logout(){
-  try { await fetch(API + '/auth/logout', {method:'POST'}); } catch(e){}
+  try { await fetch(API + '/auth/logout', {method:'POST', headers:authHeaders()}); } catch(e){}
   CURRENT_USER = 'u_agent'; CURRENT_ROLE = 'agent';
   showLogin();
 }
@@ -397,7 +498,7 @@ async function submitForcePassword(){
 }
 
 function authHeaders(){
-  return {'Content-Type':'application/json'};  // 会话 Cookie 自动携带
+  return {'Content-Type':'application/json', 'X-Knowhow-CSRF':'1'};
 }
 
 async function boot(){
@@ -420,6 +521,7 @@ function showPage(name){
   document.getElementById('sidebar').classList.remove('open');
   // 首次进入懒加载
   if(name==='faq') loadFaqs();
+  if(name==='products'){ loadProducts(); loadOffers(); }
   if(name==='users') loadUsers();
   if(name==='ingest'){ loadBatches(); loadMapping(); }
   if(name==='trend' || name==='audit' || name==='redline' || name==='qa') initEvalViews();
@@ -575,13 +677,147 @@ async function loadQALog(){
   } catch(e){ /* 静默 */ }
 }
 
+// ============ 客服辅助 ============
+let LAST_AGENT_RESULT = null;
+async function askAgent(){
+  const question = document.getElementById('agent-question').value.trim();
+  if(!question){ showMsg('请先输入客户问题', false); return; }
+  const btn = document.getElementById('agent-run');
+  btn.disabled = true;
+  try {
+    const d = await api('/v1/ask', {
+      method:'POST',
+      body:JSON.stringify({
+        question,
+        sku_code:document.getElementById('agent-sku').value.trim(),
+        customer_id:document.getElementById('agent-customer').value.trim(),
+        channel:'web'
+      })
+    });
+    LAST_AGENT_RESULT = d;
+    const cards = (d.citation_details||[]).map(c=>`
+      <div style="border:1px solid var(--border);border-radius:8px;padding:9px 11px;margin-bottom:8px;">
+        <div style="font-weight:600;font-size:13px;">知识卡 #${c.id} · ${esc(c.category||'未分类')}</div>
+        <div style="font-size:12px;margin-top:4px;">${esc(c.question)}</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:4px;">证据：${esc((c.sources||[]).join(', '))||'无证据编号'}</div>
+      </div>`).join('');
+    const actionClass = d.action==='A'?'tag-ok':d.action==='D'?'tag-bad':'tag-red';
+    document.getElementById('agent-result').innerHTML = `
+      <div class="card">
+        <div class="toolbar">
+          <span class="tag ${actionClass}">动作 ${esc(d.action)}</span>
+          <span style="font-size:12px;color:var(--muted);">${esc(d.reason)} · ${d.latency_ms}ms</span>
+        </div>
+        <div style="white-space:pre-wrap;line-height:1.75;font-size:14px;min-height:60px;">${esc(d.answer)||'<span style="color:var(--warn)">未生成客户答复，需要人工处理。</span>'}</div>
+        ${(d.missing_slots||[]).length ? `<div style="margin-top:10px;color:var(--warn);font-size:13px;">待补信息：${esc(d.missing_slots.join('；'))}</div>`:''}
+        <div style="margin-top:14px;">${cards||'<span style="font-size:12px;color:var(--muted)">没有可引用的生产知识。</span>'}</div>
+        <div class="toolbar" style="margin-top:12px;">
+          ${d.answer ? `<button class="btn btn-ghost" onclick="copyAgentAnswer()">复制草稿</button>`:''}
+          <button class="btn btn-ghost" onclick="sendAgentFeedback('correct')">回答正确</button>
+          <button class="btn btn-ghost" onclick="sendAgentFeedback('incorrect')">需要修正</button>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:6px;">审计编号 ${esc(d.inquiry_id)} · 模型 ${esc(d.model||'未调用')}</div>
+      </div>`;
+  } catch(e){ showMsg('问答失败：'+e.message, false); }
+  finally { btn.disabled = false; }
+}
+
+async function copyAgentAnswer(){
+  if(!LAST_AGENT_RESULT || !LAST_AGENT_RESULT.answer) return;
+  try { await navigator.clipboard.writeText(LAST_AGENT_RESULT.answer); showMsg('草稿已复制', true); }
+  catch(e){ showMsg('复制失败，请手动选择文本', false); }
+}
+
+async function sendAgentFeedback(verdict){
+  if(!LAST_AGENT_RESULT) return;
+  const reason = verdict==='correct' ? '客服确认可用' :
+    (prompt('请简要说明问题或需修正的原因：') || '');
+  const corrected = verdict==='incorrect' ?
+    (prompt('建议的正确答复（可留空）：') || '') : '';
+  try {
+    const d = await api('/api/v1/feedback', {
+      method:'POST',
+      body:JSON.stringify({
+        inquiry_id:LAST_AGENT_RESULT.inquiry_id,
+        verdict, reason, corrected_answer:corrected
+      })
+    });
+    showMsg(d.issue_id ? `反馈已进入待处理队列 #${d.issue_id}` : '反馈已记录', true);
+  } catch(e){ showMsg('反馈失败：'+e.message, false); }
+}
+
+// ============ 产品事实与报价审核 ============
+async function loadProducts(){
+  try {
+    const status = document.getElementById('product-status').value;
+    const q = document.getElementById('product-q').value.trim();
+    const rows = await api('/products?status='+encodeURIComponent(status)+
+      '&q='+encodeURIComponent(q));
+    const canReview = CURRENT_ROLE==='reviewer' || CURRENT_ROLE==='admin';
+    const tb = document.querySelector('#product-table tbody');
+    tb.innerHTML = rows.map(p=>`
+      <tr>
+        <td class="mono">${p.id}</td><td class="mono">${esc(p.sku_code)}</td>
+        <td>${esc(p.name_zh||p.name_en||'-')}</td><td>${esc(p.category||'-')}</td>
+        <td><span class="tag ${p.status==='approved'?'tag-ok':'tag-red'}">${esc(p.status)}</span></td>
+        <td>${p.variant_count}</td><td>${p.active_offer_count}</td>
+        <td>${p.status==='draft' && canReview ? `
+          <button class="btn" style="padding:3px 8px;font-size:12px;background:var(--ok);" onclick="reviewProduct(${p.id},'approve')">通过</button>
+          <button class="btn btn-danger" style="padding:3px 8px;font-size:12px;" onclick="reviewProduct(${p.id},'reject')">驳回</button>`:'-'}</td>
+      </tr>`).join('') || '<tr><td colspan="8" style="color:var(--muted);text-align:center;">无产品记录</td></tr>';
+  } catch(e){ showMsg('加载产品失败：'+e.message, false); }
+}
+
+async function reviewProduct(id, action){
+  try {
+    await api(`/products/${id}/${action}`, {method:'POST',body:'{}'});
+    showMsg(`产品 #${id} 已${action==='approve'?'通过':'驳回'}`, action==='approve');
+    loadProducts();
+  } catch(e){ showMsg('产品审核失败：'+e.message, false); }
+}
+
+async function loadOffers(){
+  try {
+    const status = document.getElementById('offer-status').value;
+    const q = document.getElementById('offer-q').value.trim();
+    const rows = await api('/offers?status='+encodeURIComponent(status)+
+      '&q='+encodeURIComponent(q));
+    const canReview = CURRENT_ROLE==='reviewer' || CURRENT_ROLE==='admin';
+    const tb = document.querySelector('#offer-table tbody');
+    tb.innerHTML = rows.map(o=>`
+      <tr>
+        <td class="mono">${o.id}</td><td class="mono">${esc(o.sku_code)}<br>${esc(o.variant_code)}</td>
+        <td><b>${esc(o.currency)} ${Number(o.unit_price).toFixed(2)}</b></td>
+        <td>${o.moq||'-'}</td><td>${o.lead_time_days?o.lead_time_days+' 天':'-'}</td>
+        <td>${esc(o.valid_until||'-')}</td>
+        <td><span class="tag ${o.status==='approved'?'tag-ok':o.status==='draft'?'tag-red':'tag-bad'}">${esc(o.status)}</span></td>
+        <td>${o.status==='draft' && canReview ? `
+          <button class="btn" style="padding:3px 8px;font-size:12px;background:var(--ok);" onclick="reviewOffer(${o.id},'approve')">发布</button>
+          <button class="btn btn-danger" style="padding:3px 8px;font-size:12px;" onclick="reviewOffer(${o.id},'reject')">驳回</button>`:'-'}</td>
+      </tr>`).join('') || '<tr><td colspan="8" style="color:var(--muted);text-align:center;">无报价记录</td></tr>';
+  } catch(e){ showMsg('加载报价失败：'+e.message, false); }
+}
+
+async function reviewOffer(id, action){
+  try {
+    await api(`/offers/${id}/${action}`, {method:'POST',body:'{}'});
+    showMsg(`报价 #${id} 已${action==='approve'?'发布':'驳回'}`, action==='approve');
+    loadOffers();
+  } catch(e){ showMsg('报价审核失败：'+e.message, false); }
+}
+
 // ============ 数据入录 ============
 async function loadMapping(){
   try {
-    const d = await api('/mapping-config');
+    const d = await api('/api/v1/import/templates');
     const sel = document.getElementById('ingest-config');
-    const opts = (d.yaml||[]).map(k=>`<option value="${k}">${k} 映射</option>`).join('');
+    TEMPLATES = {};
+    const opts = (d.templates||[]).map(t=>{
+      TEMPLATES[t.key] = t;
+      return `<option value="${esc(t.key)}">${esc(t.key)} · ${esc(t.description||'导入模板')}</option>`;
+    }).join('');
     sel.innerHTML = opts || '<option>（无映射配置）</option>';
+    renderMappingEditor();
   } catch(e){ /* 权限不足时静默 */ }
 }
 
@@ -625,30 +861,202 @@ async function showBatch(id){
   } catch(e){ showMsg('批次详情：'+e.message, false); }
 }
 
-async function uploadAndRun(){
-  const btn = document.getElementById('btn-upload');
+async function _uploadSelectedFile(){
   const file = document.getElementById('ingest-file').files[0];
   if(!file){ showMsg('请先选择文件', false); return; }
-  btn.disabled = true;
   document.getElementById('ingest-status').textContent = '上传中…';
+  const fd = new FormData();
+  fd.append('file', file);
+  const ah = authHeaders();
+  delete ah['Content-Type'];
+  const r = await fetch(API + '/upload', {method:'POST', headers:ah, body:fd});
+  if(!r.ok){ const j = await r.json().catch(()=>({})); throw new Error(j.detail||('HTTP '+r.status)); }
+  CURRENT_UPLOAD = await r.json();
+  return CURRENT_UPLOAD;
+}
+
+function _targetFromKind(){
+  return document.getElementById('ingest-kind').value === 'faq' ? 'faq' : 'product';
+}
+
+function _compiledFields(){
+  const key = document.getElementById('ingest-config').value;
+  const t = TEMPLATES[key];
+  if(!t) return [];
+  const cfg = t.config || {};
+  if(Array.isArray(cfg.fields)){
+    const fields = cfg.fields.slice();
+    const known = new Set(fields.map(f=>f.to||f.target));
+    for(const target of Object.keys(CURRENT_OVERRIDES)){
+      if(!known.has(target)) fields.push({from:CURRENT_OVERRIDES[target],to:target});
+    }
+    return fields;
+  }
+  const fields = [];
+  for(const [from,to] of Object.entries(cfg.mapping||{})) fields.push({from,to});
+  for(const from of cfg.spec_cols||[]) fields.push({from,to:'spec.'+from});
+  return fields;
+}
+
+function _currentHeaders(){
+  const sheets = (CURRENT_SOURCE && CURRENT_SOURCE.sheets) || [];
+  const first = sheets.find(s=>CURRENT_SHEETS.includes(s.sheet)) || sheets[0];
+  return (first && first.headers) || [];
+}
+
+function selectedSheets(){
+  return [...document.querySelectorAll('#sheet-selector input[type=checkbox]:checked')]
+    .map(x=>x.value);
+}
+
+function onSheetChange(){
+  CURRENT_SHEETS = selectedSheets();
+  renderMappingEditor();
+}
+
+function renderMappingEditor(){
+  const box = document.getElementById('mapping-editor');
+  if(!box) return;
+  const fields = _compiledFields();
+  if(!fields.length){ box.innerHTML=''; return; }
+  const headers = _currentHeaders();
+  const options = ['<option value="">— 未映射 —</option>'].concat(
+    headers.map(h=>`<option value="${esc(h)}">${esc(h)}</option>`)
+  ).join('');
+  box.innerHTML = `<div style="font-size:13px;font-weight:600;margin-bottom:6px;">字段映射（可在上传分析后调整）</div>
+    <div style="overflow-x:auto;"><table><thead><tr><th>源列</th><th>目标字段</th></tr></thead><tbody>
+    ${fields.map(f=>{
+      const target = f.to || f.target;
+      const selected = CURRENT_OVERRIDES[target] || f.from || '';
+      return `<tr><td><select class="select" data-target="${esc(target)}" onchange="setOverride(this)">${options}</select></td><td class="mono">${esc(target)}</td></tr>`;
+    }).join('')}
+    </tbody></table></div>`;
+  box.querySelectorAll('select[data-target]').forEach(sel=>{
+    const target = sel.dataset.target;
+    const desired = CURRENT_OVERRIDES[target] || (fields.find(f=>(f.to||f.target)===target)||{}).from || '';
+    if([...sel.options].some(o=>o.value===desired)) sel.value=desired;
+  });
+}
+
+function setOverride(sel){
+  if(sel.value) CURRENT_OVERRIDES[sel.dataset.target] = sel.value;
+  else delete CURRENT_OVERRIDES[sel.dataset.target];
+}
+
+function onTemplateChange(){
+  CURRENT_OVERRIDES = {};
+  renderMappingEditor();
+}
+
+function onImportModeChange(){
+  const preferred = _targetFromKind()==='faq' ? 'jiacong_faq' : 'jiacong_facts';
+  const sel = document.getElementById('ingest-config');
+  if([...sel.options].some(o=>o.value===preferred)) sel.value=preferred;
+  CURRENT_OVERRIDES = {};
+  renderMappingEditor();
+}
+
+async function uploadAndAnalyze(){
+  const btn = document.getElementById('btn-analyze');
+  btn.disabled = true;
   try {
-    const fd = new FormData();
-    fd.append('file', file);
-    const ah = authHeaders();
-    delete ah['Content-Type'];  // FormData 自动设置 boundary
-    const r = await fetch(API + '/upload', {method:'POST', headers:ah, body:fd});
-    if(!r.ok){ const j = await r.json().catch(()=>({})); throw new Error(j.detail||('HTTP '+r.status)); }
-    const up = await r.json();
-    document.getElementById('ingest-status').textContent = `已上传 ${up.filename}（${(up.size/1024).toFixed(0)}KB）→ 执行入录…`;
-    const kind = document.getElementById('ingest-kind').value;
-    const cfg = document.getElementById('ingest-config').value;
-    const res = await api('/ingest/run', {method:'POST', body: JSON.stringify({path:up.path, kind, config:cfg})});
-    const loaded = res.loaded + (res.updated || 0);
-    showMsg(`入录完成：批次 #${res.batch_id}，新增 ${res.loaded} / 更新 ${res.updated||0} / 待修 ${res.pending||0} / 坏行 ${res.bad||0}`, true);
-    document.getElementById('ingest-status').textContent = '';
+    const up = await _uploadSelectedFile();
+    const source = await api('/api/v1/import/analyze', {
+      method:'POST', body:JSON.stringify({path:up.path, target:_targetFromKind()})
+    });
+    CURRENT_SOURCE = source;
+    const sheets = source.sheets||[];
+    CURRENT_SHEETS = sheets.filter(s=>Object.keys(s.suggested_mapping||{}).length)
+      .map(s=>s.sheet);
+    if(!CURRENT_SHEETS.length && sheets.length) CURRENT_SHEETS = [sheets[0].sheet];
+    const firstSuggestions = (sheets.find(s=>CURRENT_SHEETS.includes(s.sheet))||{}).suggested_mapping || {};
+    CURRENT_OVERRIDES = {};
+    for(const [target, sourceCol] of Object.entries(firstSuggestions)){
+      CURRENT_OVERRIDES[target] = sourceCol;
+    }
+    document.getElementById('source-summary').innerHTML =
+      `已识别 <b>${sheets.length}</b> 个数据表。请勾选本次要导入的表；未勾选的说明页不会进入预检。<br>
+       <div id="sheet-selector" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
+       ${sheets.map(s=>`<label style="border:1px solid var(--border);border-radius:6px;padding:6px 9px;background:#fff;">
+         <input type="checkbox" value="${esc(s.sheet)}" ${CURRENT_SHEETS.includes(s.sheet)?'checked':''}
+           onchange="onSheetChange()"> ${esc(s.sheet)}
+         <span style="color:var(--muted)">${(s.headers||[]).length} 列</span></label>`).join('')}
+       </div>`;
+    document.getElementById('ingest-actions').style.display='flex';
+    renderMappingEditor();
+    document.getElementById('ingest-preview').innerHTML='';
+    showMsg('文件已上传并完成结构识别，请检查字段映射后预检。', true);
+  } catch(e){ showMsg('分析失败：'+e.message, false); }
+  finally { btn.disabled = false; document.getElementById('ingest-status').textContent=''; }
+}
+
+async function previewImport(){
+  if(!CURRENT_UPLOAD) { showMsg('请先上传并分析文件', false); return; }
+  try {
+    const payload = {
+      path:CURRENT_UPLOAD.path,
+      template_key:document.getElementById('ingest-config').value,
+      target:_targetFromKind(),
+      overrides:CURRENT_OVERRIDES,
+      selected_sheets:CURRENT_SHEETS,
+      limit:50
+    };
+    const p = await api('/api/v1/import/preview', {method:'POST', body:JSON.stringify(payload)});
+    const rows = (p.sample||[]).slice(0,10);
+    document.getElementById('ingest-preview').innerHTML =
+      `<div style="margin-bottom:8px;">目标 <b>${esc(p.target)}</b> · 可入 <b style="color:var(--ok)">${p.ready_rows}</b> · 问题 <b style="color:var(--bad)">${p.error_rows}</b> / 共 ${p.total_rows}</div>
+       <div style="overflow-x:auto;"><table><thead><tr><th>sheet</th><th>行</th><th>规范化样例</th><th>问题</th></tr></thead><tbody>
+       ${rows.map(r=>`<tr><td>${esc(r.sheet)}</td><td>${r.row_no}</td><td class="mono" style="max-width:480px;white-space:pre-wrap;">${esc(JSON.stringify(r.normalized))}</td><td>${esc((r.errors||[]).join('; '))||'OK'}</td></tr>`).join('')}
+       </tbody></table></div>`;
+    showMsg(p.error_rows ? '预检发现问题，请先调整映射或源文件。' : '预检通过，可以写入草稿。', !p.error_rows);
+  } catch(e){ showMsg('预检失败：'+e.message, false); }
+}
+
+async function executeImport(){
+  if(!CURRENT_UPLOAD) { showMsg('请先上传并分析文件', false); return; }
+  try {
+    const payload = {
+      path:CURRENT_UPLOAD.path,
+      template_key:document.getElementById('ingest-config').value,
+      target:_targetFromKind(),
+      overrides:CURRENT_OVERRIDES,
+      selected_sheets:CURRENT_SHEETS
+    };
+    const res = await api('/api/v1/import/execute', {method:'POST', body:JSON.stringify(payload)});
+    showMsg(`已写入草稿：批次 #${res.batch_id}，新增 ${res.inserted} / 更新 ${res.updated}`, true);
     loadBatches();
-  } catch(e){ showMsg('入录失败：'+e.message, false); }
-  finally { btn.disabled = false; document.getElementById('ingest-status').textContent = ''; }
+  } catch(e){ showMsg('写入失败：'+e.message, false); }
+}
+
+async function saveMappingTemplate(){
+  const key = prompt('模板标识（英文、数字、下划线），例如 acme_products_v1：');
+  if(!key) return;
+  const description = prompt('模板说明：') || '';
+  const sourceKey = document.getElementById('ingest-config').value;
+  const sourceTemplate = (TEMPLATES[sourceKey]||{}).config || {};
+  const fields = _compiledFields().map(f=>({
+    from: CURRENT_OVERRIDES[f.to||f.target] || f.from,
+    to: f.to || f.target,
+    required: !!f.required,
+    transforms: f.transforms || ['trim']
+  })).filter(f=>f.from);
+  const cfg = {
+    config_key:key,
+    target:_targetFromKind(),
+    description,
+    reader:{...(sourceTemplate.reader || {max_scan_rows:20, skip_sheets:[]}),
+      included_sheets:CURRENT_SHEETS},
+    fields
+  };
+  try {
+    const d = await api('/api/v1/import/templates', {
+      method:'POST',
+      body:JSON.stringify({config_key:key, description, config:cfg, active:true})
+    });
+    showMsg(`模板 ${d.config_key} v${d.version} 已保存`, true);
+    await loadMapping();
+    document.getElementById('ingest-config').value = key;
+  } catch(e){ showMsg('保存模板失败：'+e.message, false); }
 }
 
 // ============ 知识卡管理 ============
@@ -657,7 +1065,7 @@ async function loadFaqs(){
   const q = document.getElementById('faq-q').value.trim();
   try {
     const rows = await api('/faq?status='+encodeURIComponent(status)+'&q='+encodeURIComponent(q));
-    const isReviewer = CURRENT_USER.replace('u_','') === 'reviewer' || CURRENT_USER.replace('u_','') === 'admin';
+    const isReviewer = CURRENT_ROLE === 'reviewer' || CURRENT_ROLE === 'admin';
     const tb = document.querySelector('#faq-table tbody');
     tb.innerHTML = rows.map(f=>`
       <tr>
@@ -685,7 +1093,7 @@ async function loadFaqs(){
 async function openFaq(id){
   try {
     const f = await api('/faq/'+id);
-    const isEditor = ['editor','reviewer','admin'].includes(CURRENT_USER.replace('u_',''));
+    const isEditor = ['editor','reviewer','admin'].includes(CURRENT_ROLE);
     const html = `
       <div class="form-grid">
         <div class="full"><label>问题（question）</label>
@@ -708,8 +1116,15 @@ async function openFaq(id){
           <select id="faq-p-edit" ${isEditor?'':'disabled'}>
             ${['public','internal','confidential'].map(v=>`<option ${f.permission===v?'selected':''}>${v}</option>`).join('')}
           </select></div>
+        <div class="full"><label>客户可用 customer_ready</label>
+          <select id="faq-ready-edit" ${isEditor?'':'disabled'}>
+            <option value="false" ${!f.customer_ready?'selected':''}>仅内部使用</option>
+            <option value="true" ${f.customer_ready?'selected':''}>审核后可进入客户回答</option>
+          </select></div>
         <div class="full" style="font-size:12px;color:var(--muted);">
-          状态 ${STATUS_LABEL[f.status]||f.status} · 版本 v${f.version} · 来源 ${esc((f.sources||[]).join(', '))||'-'}
+          状态 ${STATUS_LABEL[f.status]||f.status} · 当前编辑版本 v${f.version} ·
+          线上版本 ${f.published_version?'v'+f.published_version:'无'} ·
+          来源 ${esc((f.sources||[]).join(', '))||'-'}
         </div>
       </div>
       ${isEditor ? `<button class="btn" onclick="saveFaq(${f.id})">保存（保存后回到待审核）</button>` : ''}
@@ -727,6 +1142,7 @@ async function saveFaq(id){
     risk_level: document.getElementById('faq-r-edit').value,
     action_level: document.getElementById('faq-a-edit').value,
     permission: document.getElementById('faq-p-edit').value,
+    customer_ready: document.getElementById('faq-ready-edit').value === 'true',
   };
   try {
     await api('/faq/'+id, {method:'PUT', body: JSON.stringify(body)});
@@ -782,7 +1198,14 @@ async function createUser(){
   if(!id || !name){ showMsg('请填写用户 ID 和姓名', false); return; }
   try {
     const d = await api('/users', {method:'POST', body: JSON.stringify({id, name, role})});
-    showMsg(`已创建用户 ${d.user.name}（${d.user.id} · ${ROLE_LABEL[role]}）`, true);
+    if(d.temporary_password){
+      openModal('用户已创建', `<p style="font-size:13px;line-height:1.8;">用户：<b>${esc(d.user.id)}</b><br>
+        初始密码：<code style="font-size:15px;">${esc(d.temporary_password)}</code><br>
+        此密码只显示一次。用户首次登录后必须修改密码。</p>
+        <button class="btn" onclick="closeModal()">我已保存</button>`);
+    } else {
+      showMsg(`已创建用户 ${d.user.name}（${d.user.id} · ${ROLE_LABEL[role]}）`, true);
+    }
     document.getElementById('nu-id').value = ''; document.getElementById('nu-name').value = '';
     loadUsers();
   } catch(e){ showMsg('创建用户失败：'+e.message, false); }
