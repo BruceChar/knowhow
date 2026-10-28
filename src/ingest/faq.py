@@ -56,6 +56,13 @@ def load_faq(entries: list[dict], dsn: str, source_file: str,
                     VALUES (%s,%s,%s,%s,%s,%s,%s,'draft',%s)
                     ON CONFLICT (question) DO UPDATE SET
                         answer=EXCLUDED.answer,
+                        category=EXCLUDED.category,
+                        tags=EXCLUDED.tags,
+                        sources=EXCLUDED.sources,
+                        risk_level=EXCLUDED.risk_level,
+                        action_level=EXCLUDED.action_level,
+                        customer_ready=false,
+                        status='draft',
                         embedding=EXCLUDED.embedding
                     RETURNING (xmax = 0) AS inserted
                 """, (e["question"], e["answer"], e.get("module"),

@@ -173,7 +173,8 @@ def load(rows: list[dict], dsn: str, cfg: dict, source_file: str,
                     VALUES (%s,%s,%s,%s,%s,'draft')
                     ON CONFLICT (sku_code) DO UPDATE
                     SET name_zh=EXCLUDED.name_zh, name_en=EXCLUDED.name_en,
-                        category=EXCLUDED.category, spec=EXCLUDED.spec
+                        category=EXCLUDED.category, spec=EXCLUDED.spec,
+                        status='draft'
                 """, (sku, m.get("category"), m.get("name_zh"), m.get("name_en"),
                       _json_safe(spec)))
                 stats["loaded"] += 1

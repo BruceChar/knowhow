@@ -1,0 +1,21 @@
+config_key: foreign_trade_quote
+source_kind: facts
+target: product
+description: 外贸通用报价单（型号、币种、单价、MOQ、交期和有效期）
+include_offer_fields: true
+reader:
+  max_scan_rows: 20
+  skip_sheets: []
+fields:
+  - {from: "型号", to: "sku_code", required: true, transforms: [trim, uppercase, remove_spaces]}
+  - {from: "中文名", to: "name_zh", transforms: [trim]}
+  - {from: "Product Name", to: "name_en", transforms: [trim]}
+  - {from: "Category", to: "category", transforms: [trim]}
+  - {from: "Material", to: "variant.attributes.material", transforms: [trim]}
+  - {from: "Product Size", to: "variant.attributes.size", transforms: [trim]}
+  - {from: "Color", to: "variant.attributes.color", transforms: [trim]}
+  - {from: "Unit Price", to: "offer.unit_price", transforms: [trim, number]}
+  - {from: "Currency", to: "offer.currency", transforms: [trim, currency]}
+  - {from: "MOQ", to: "offer.moq", transforms: [trim, integer]}
+  - {from: "Lead Time", to: "offer.lead_time_days", transforms: [trim, integer]}
+  - {from: "Valid Until", to: "offer.valid_until", transforms: [trim, date]}

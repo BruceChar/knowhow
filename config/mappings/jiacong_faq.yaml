@@ -1,0 +1,11 @@
+config_key: jiacong_faq
+source_kind: faq
+target: faq
+description: 佳宠 401 条客户问答 JSON 导入模板
+reader:
+  skip_sheets: []
+fields:
+  - {from: question, to: question, required: true, transforms: [trim]}
+  - {from: answer, to: answer, required: true, transforms: [trim]}
+  - {from: module, to: category, transforms: [trim]}
+  - {from: tags, to: tags, transforms: [trim]}
