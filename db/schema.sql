@@ -69,10 +69,14 @@ CREATE TABLE faq (                         -- 知识卡主体（话术库/手册
                 CHECK (risk_level IN ('low','medium','high')),
   action_level  TEXT NOT NULL DEFAULT 'B'
                 CHECK (action_level IN ('A','B','C','D')),
+  customer_ready BOOLEAN NOT NULL DEFAULT false,
   version       INT NOT NULL DEFAULT 1,
   approved_by   TEXT, approved_at TIMESTAMPTZ,
   updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-  embedding     vector(1024)
+  embedding     vector(1024),
+  published_snapshot JSONB,
+  published_embedding vector(1024),
+  published_version INT
 );
 
 CREATE TABLE evidence (                    -- 证据原始文件（可溯源）

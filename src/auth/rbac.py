@@ -14,10 +14,15 @@
 """
 from __future__ import annotations
 
+import os
+import secrets
 from dataclasses import dataclass
 from typing import Callable
 
+import psycopg
 from fastapi import Depends, HTTPException, Request
+
+from src.config import RAG_DSN
 
 ROLE_ORDER = {"agent": 0, "editor": 1, "reviewer": 2, "admin": 3}
 
@@ -45,52 +50,61 @@ class User:
         return self.level >= ROLE_ORDER.get(min_role, 0)
 
 
-# ---------------- 用户解析（MVP：内存运行时表，生产换 SSO/JWT） ----------------
-# 注：真实部署时从会话/JWT 解析，这里用 X-User-Id 头模拟（演示与联调用）。
-# USERS 为运行时可变表（admin_api 的 /users 端点读写）；以 STATIC_USERS 为种子。
-STATIC_USERS = {
-    "u_admin": User("u_admin", "管理员", "admin"),
-    "u_reviewer": User("u_reviewer", "审核员", "reviewer"),
-    "u_editor": User("u_editor", "业务员", "editor"),
-    "u_agent": User("u_agent", "客服", "agent"),
-}
-USERS: dict[str, User] = dict(STATIC_USERS)
-
 VALID_ROLES = set(ROLE_ORDER.keys())
 
 
-def list_users() -> list[dict]:
-    """返回全部用户（含角色），供管理端展示。"""
-    return [{"id": u.id, "name": u.name, "role": u.role}
-            for u in USERS.values()]
+def list_users(dsn: str = RAG_DSN) -> list[dict]:
+    """Return users from the authoritative database, never process memory."""
+    with psycopg.connect(dsn) as conn, conn.cursor() as cur:
+        cur.execute("SELECT id, name, role FROM users ORDER BY id")
+        return [{"id": row[0], "name": row[1], "role": row[2]}
+                for row in cur.fetchall()]
 
 
-def create_user(uid: str, name: str, role: str) -> User:
-    """新建用户；uid 冲突或角色非法时报错。"""
-    if uid in USERS:
-        raise ValueError(f"用户已存在: {uid}")
+def create_user(uid: str, name: str, role: str,
+                initial_password: str | None = None,
+                dsn: str = RAG_DSN) -> tuple[User, str | None]:
+    """Create a persistent user and return an optional one-time password."""
     if role not in VALID_ROLES:
         raise ValueError(f"非法角色 {role!r}，可选 {sorted(VALID_ROLES)}")
-    u = User(uid, name, role)
-    USERS[uid] = u
-    return u
+    from src.auth.auth import hash_password
+
+    temp_password = initial_password
+    if not temp_password:
+        temp_password = secrets.token_urlsafe(12)
+    with psycopg.connect(dsn) as conn, conn.cursor() as cur:
+        cur.execute("SELECT 1 FROM users WHERE id=%s", (uid,))
+        if cur.fetchone():
+            raise ValueError(f"用户已存在: {uid}")
+        cur.execute("""
+            INSERT INTO users (id, name, role, password_hash, must_change_password)
+            VALUES (%s,%s,%s,%s,true)
+        """, (uid, name, role, hash_password(temp_password)))
+        conn.commit()
+    return User(uid, name, role), (None if initial_password else temp_password)
 
 
-def update_user_role(uid: str, role: str) -> User:
-    """变更角色；uid 不存在或角色非法时报错。"""
-    if uid not in USERS:
+def update_user_role(uid: str, role: str, dsn: str = RAG_DSN) -> User:
+    """Persist role changes so the next request sees the new authorization."""
+    if role not in VALID_ROLES:
+        raise ValueError(f"非法角色 {role!r}，可选 {sorted(VALID_ROLES)}")
+    with psycopg.connect(dsn) as conn, conn.cursor() as cur:
+        cur.execute(
+            "UPDATE users SET role=%s WHERE id=%s RETURNING id,name,role",
+            (role, uid),
+        )
+        row = cur.fetchone()
+        conn.commit()
+    if not row:
         raise ValueError(f"用户不存在: {uid}")
-    if role not in VALID_ROLES:
-        raise ValueError(f"非法角色 {role!r}，可选 {sorted(VALID_ROLES)}")
-    USERS[uid].role = role
-    return USERS[uid]
+    return User(row[0], row[1], row[2])
 
 
 def get_current_user(request: Request) -> User:
     """解析当前用户，优先级：
     1) Cookie kh_session —— 生产会话（httpOnly，防 XSS 窃取）
     2) Authorization: Bearer <token> —— 兼容 API/脚本调用
-    3) X-User-Id —— 开发/联调兼容（仅本地开发，生产应移除）
+    3) X-User-Id —— 仅在显式设置 KNOWHOW_DEV_AUTH=1 时允许
     """
     from src.auth import auth as _auth
     token = request.cookies.get("kh_session") or ""
@@ -103,11 +117,14 @@ def get_current_user(request: Request) -> User:
         if info is None:
             raise HTTPException(status_code=401, detail="会话无效或已过期，请重新登录")
         return User(info["id"], info["name"], info["role"])
-    uid = request.headers.get("X-User-Id", "u_agent")
-    user = USERS.get(uid)
-    if user is None:
-        raise HTTPException(status_code=401, detail="未知用户")
-    return user
+    if os.environ.get("KNOWHOW_DEV_AUTH", "0") == "1":
+        uid = request.headers.get("X-User-Id", "u_agent")
+        with psycopg.connect(RAG_DSN) as conn, conn.cursor() as cur:
+            cur.execute("SELECT id,name,role FROM users WHERE id=%s", (uid,))
+            row = cur.fetchone()
+        if row:
+            return User(row[0], row[1], row[2])
+    raise HTTPException(status_code=401, detail="请先登录")
 
 
 def require_role(min_role: str) -> Callable:

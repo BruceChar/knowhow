@@ -23,10 +23,13 @@ services:
       - "8000:8000"
     environment:
       DATABASE_URL: postgresql://rag:rag_dev_2026@db:5432/rag
+      RAG_DSN: postgresql://rag:rag_dev_2026@db:5432/rag
       EMBEDDING_MODEL: bge-m3
       LLM_BASE_URL: https://api.deepseek.com/v1   # 模型中立，可替换
       LLM_API_KEY: ${LLM_API_KEY}
       LLM_MODEL: deepseek-chat
+      KNOWHOW_SECRET: ${KNOWHOW_SECRET}
+      KNOWHOW_PROD: ${KNOWHOW_PROD:-1}
     depends_on:
       db:
         condition: service_healthy

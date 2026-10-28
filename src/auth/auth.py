@@ -129,29 +129,36 @@ def _clear_failures(username: str, ip: str) -> None:
 
 # ---------------- 会话 ----------------
 
+def _session_fingerprint(token: str) -> str:
+    """Persist only a one-way fingerprint of a bearer session token."""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
 def create_session(user_id: str, dsn: str = DEFAULT_DSN) -> str:
     token = secrets.token_urlsafe(32)
+    token_hash = _session_fingerprint(token)
     exp = datetime.now(timezone.utc) + timedelta(hours=SESSION_TTL_HOURS)
     with psycopg.connect(dsn) as conn, conn.cursor() as cur:
         cur.execute("""
             INSERT INTO sessions (token, user_id, expires_at)
             VALUES (%s,%s,%s)
-        """, (token, user_id, exp))
+        """, (token_hash, user_id, exp))
         conn.commit()
     return token
 
 
 def get_session_user(token: str, dsn: str = DEFAULT_DSN) -> Optional[dict]:
     """按 token 查有效会话 → 用户；同时滑动续期 last_seen。"""
+    token_hash = _session_fingerprint(token)
     with psycopg.connect(dsn) as conn, conn.cursor() as cur:
         cur.execute("""
             SELECT u.id, u.name, u.role
             FROM sessions s JOIN users u ON u.id = s.user_id
             WHERE s.token=%s AND s.expires_at > now()
-        """, (token,))
+        """, (token_hash,))
         row = cur.fetchone()
         if row:
-            cur.execute("UPDATE sessions SET last_seen=now() WHERE token=%s", (token,))
+            cur.execute("UPDATE sessions SET last_seen=now() WHERE token=%s", (token_hash,))
             conn.commit()
     if not row:
         return None
@@ -159,8 +166,9 @@ def get_session_user(token: str, dsn: str = DEFAULT_DSN) -> Optional[dict]:
 
 
 def delete_session(token: str, dsn: str = DEFAULT_DSN) -> bool:
+    token_hash = _session_fingerprint(token)
     with psycopg.connect(dsn) as conn, conn.cursor() as cur:
-        cur.execute("DELETE FROM sessions WHERE token=%s", (token,))
+        cur.execute("DELETE FROM sessions WHERE token=%s", (token_hash,))
         conn.commit()
         return cur.rowcount > 0
 
@@ -203,10 +211,11 @@ def set_password(user_id: str, new_password: str, dsn: str = DEFAULT_DSN) -> Non
 def revoke_sessions(user_id: str, keep_token: str | None = None,
                     dsn: str = DEFAULT_DSN) -> None:
     """注销用户全部会话（可保留当前 token，如改密后保持本会话）。"""
+    keep_hash = _session_fingerprint(keep_token) if keep_token else None
     with psycopg.connect(dsn) as conn, conn.cursor() as cur:
-        if keep_token:
+        if keep_hash:
             cur.execute("DELETE FROM sessions WHERE user_id=%s AND token<>%s",
-                        (user_id, keep_token))
+                        (user_id, keep_hash))
         else:
             cur.execute("DELETE FROM sessions WHERE user_id=%s", (user_id,))
         conn.commit()
