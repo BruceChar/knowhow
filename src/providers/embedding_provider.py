@@ -111,6 +111,10 @@ class Qwen3LocalProvider(EmbeddingProvider):
             if self.cache_dir:
                 kwargs["cache_dir"] = self.cache_dir
             self._tokenizer = AutoTokenizer.from_pretrained(self.model_name, **kwargs)
+            # Decoder-based embedding models use last-token pooling. Left
+            # padding keeps that token at a stable sequence position in batches.
+            if hasattr(self._tokenizer, "padding_side"):
+                self._tokenizer.padding_side = "left"
             self._model = AutoModel.from_pretrained(
                 self.model_name, **kwargs).to(self.device)
             self._model.eval()
@@ -125,9 +129,10 @@ class Qwen3LocalProvider(EmbeddingProvider):
             inputs = tok(chunk, padding=True, truncation=True,
                          max_length=512, return_tensors="pt").to(self.device)
             with torch.no_grad():
-                out_vecs = model(**inputs).squeeze(0).detach().cpu().numpy()
+                hidden = model(**inputs).last_hidden_state
+                out_vecs = hidden[:, -1].detach().cpu().numpy()
             for v in out_vecs:
-                v = v / (v ** 2).sum() ** 0.5  # 归一化
+                v = v / max((v ** 2).sum() ** 0.5, 1e-12)  # 归一化
                 out.append(v.tolist())
         return out
 

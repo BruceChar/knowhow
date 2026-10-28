@@ -46,8 +46,8 @@ def retrieve(query: str, dsn: str, top_k: int = 5,
     provider = get_embedding_provider(backend)
     emb = provider.embed_query(query)  # query 走 embed_query（Qwen3 自动加 instruction）
     vs = get_vector_store("pgvector")
-    vs.collection = "faq"
-    filters = None if include_draft else {"status": "approved"}
+    vs.collection = "faq" if include_draft else "active_faq"
+    filters = None
     hits = vs.search(emb, top_k=top_k, filters=filters)
     # 取 question 文本
     if not hits:
@@ -173,25 +173,27 @@ def run(cases: list[dict], dsn: str, top_k: int = 5,
     }
 
 
-def save_report(result: dict, goldset_path: str, dsn: str = DEFAULT_DSN) -> int:
+def save_report(result: dict, goldset_path: str, dsn: str = DEFAULT_DSN,
+                mode: str = "dev") -> int:
     """评测结果持久化到 eval_report 表，返回报告 id。"""
     import psycopg
     m = result["metrics"]
     name = Path(goldset_path).stem
     detail = {
         "goldset_path": goldset_path,
+        "mode": mode,
         "thresholds": result["thresholds"],
         "per_case": m["retrieval"]["per_case"],
         "red_line_details": m["red_line"].get("details", []),
     }
     with psycopg.connect(dsn) as conn, conn.cursor() as cur:
         cur.execute("""
-            INSERT INTO eval_report (goldset_name, goldset_version, backend,
+            INSERT INTO eval_report (goldset_name, goldset_version, backend, mode,
                 recall_at_5, precision_at_5, mrr_at_5, fact_accuracy,
                 red_line_errors, gate_passed, total_cases, hit_cases, detail_json)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             RETURNING id
-        """, (name, name, result["backend"],
+        """, (name, name, result["backend"], mode,
               m["retrieval"]["recall_at_5"], m["retrieval"]["precision_at_5"],
               m["retrieval"]["mrr_at_5"], m["facts"]["fact_accuracy"],
               m["red_line"]["red_line_errors"], result["gate_passed"],
@@ -219,7 +221,8 @@ if __name__ == "__main__":
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
     if a.save_db:
-        rid = save_report(result, a.goldset, a.dsn)
+        rid = save_report(result, a.goldset, a.dsn,
+                          mode="dev" if a.dev else "production")
         print(f"\n[评测] 已持久化到 eval_report id={rid}")
 
     if a.json_out:

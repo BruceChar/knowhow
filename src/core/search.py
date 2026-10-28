@@ -19,58 +19,104 @@ import psycopg
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 from src.providers.embedding_provider import get_embedding_provider
 
+RRF_K = 60.0
+
+
+def _rrf(ranks: list[int]) -> float:
+    return sum(1.0 / (RRF_K + rank) for rank in ranks)
+
 
 def embed_query(text: str, backend: str | None = None) -> list[float]:
     """防腐层查询编码（Qwen3 自动 instruction 前缀）。"""
     return get_embedding_provider(backend).embed_query(text)
 
 
-def search_faq(conn, query: str, k: int = 5, permission: str = "internal",
+def search_faq(conn, query: str, k: int = 5,
+               permissions: list[str] | None = None,
+               customer_ready: bool | None = None,
                backend: str | None = None) -> list[dict]:
     """只检索 approved 且未过期、权限足够的 FAQ 知识卡（向量层）。"""
     qv = embed_query(query, backend)
+    permissions = permissions or ["public", "internal"]
+    extra = ""
+    params: list = [qv, permissions]
+    if customer_ready is not None:
+        extra = " AND customer_ready = %s"
+        params.append(customer_ready)
+    params.extend([qv, k])
     with conn.cursor() as cur:
-        cur.execute("""
+        cur.execute(f"""
             SELECT id, question, answer, category, risk_level, action_level,
-                   sources, 1 - (embedding <=> %s::vector) AS score
-            FROM faq
-            WHERE status = 'approved'
-              AND (valid_from IS NULL OR valid_from <= CURRENT_DATE)
+                   sources, permission, customer_ready,
+                   1 - (embedding <=> %s::vector) AS vector_score
+            FROM active_faq
+            WHERE (valid_from IS NULL OR valid_from <= CURRENT_DATE)
               AND (valid_until IS NULL OR valid_until >= CURRENT_DATE)
-              AND permission = %s
+              AND permission = ANY(%s::text[])
+              AND embedding IS NOT NULL
+              {extra}
             ORDER BY embedding <=> %s::vector
             LIMIT %s
-        """, (qv, permission, qv, k))
-        return [dict(zip(["id","question","answer","category","risk_level",
-                          "action_level","sources","score"], r)) for r in cur.fetchall()]
+        """, params)
+        cols = ["id", "question", "answer", "category", "risk_level",
+                "action_level", "sources", "permission", "customer_ready",
+                "vector_score"]
+        return [dict(zip(cols, r)) for r in cur.fetchall()]
 
 
-def search_faq_keyword(conn, query: str, k: int = 5) -> list[dict]:
+def search_faq_keyword(conn, query: str, k: int = 5,
+                       permissions: list[str] | None = None,
+                       customer_ready: bool | None = None) -> list[dict]:
     """货号/型号类精确匹配——向量层对短代码召回差，先补关键词层。"""
+    permissions = permissions or ["public", "internal"]
+    extra = ""
+    params: list = [query, permissions]
+    if customer_ready is not None:
+        extra = " AND customer_ready = %s"
+        params.append(customer_ready)
+    params.extend([f"%{query}%", f"%{query}%", f"%{query}%", k])
     with conn.cursor() as cur:
-        cur.execute("""
-            SELECT id, question, answer, category, risk_level, action_level, sources,
-                   ts_rank(to_tsvector('simple', question || ' ' || answer), plainto_tsquery('simple', %s)) AS score
-            FROM faq
-            WHERE status = 'approved'
-              AND (valid_from IS NULL OR valid_from <= CURRENT_DATE)
+        cur.execute(f"""
+            SELECT id, question, answer, category, risk_level, action_level,
+                   sources, permission, customer_ready,
+                   ts_rank(to_tsvector('simple', question || ' ' || answer),
+                           plainto_tsquery('simple', %s)) AS keyword_score
+            FROM active_faq
+            WHERE (valid_from IS NULL OR valid_from <= CURRENT_DATE)
               AND (valid_until IS NULL OR valid_until >= CURRENT_DATE)
+              AND permission = ANY(%s::text[])
+              AND embedding IS NOT NULL
+              {extra}
               AND (question ILIKE %s OR answer ILIKE %s OR category ILIKE %s)
-            ORDER BY score DESC
+            ORDER BY keyword_score DESC
             LIMIT %s
-        """, (query, f"%{query}%", f"%{query}%", f"%{query}%", k))
-        return [dict(zip(["id","question","answer","category","risk_level",
-                          "action_level","sources","score"], r)) for r in cur.fetchall()]
+        """, params)
+        cols = ["id", "question", "answer", "category", "risk_level",
+                "action_level", "sources", "permission", "customer_ready",
+                "keyword_score"]
+        return [dict(zip(cols, r)) for r in cur.fetchall()]
 
 
 def hybrid_search(conn, query: str, k: int = 5,
-                  backend: str | None = None) -> list[dict]:
-    """混合：向量召回 + 关键词召回 → 按分数融合去重，返回前 k 条知识卡。"""
-    vec = search_faq(conn, query, k*2, backend=backend)
-    kw  = search_faq_keyword(conn, query, k)
+                  backend: str | None = None,
+                  permissions: list[str] | None = None,
+                  customer_ready: bool | None = None) -> list[dict]:
+    """混合同一路径过滤后的两路候选，并用 RRF 合并排名。"""
+    candidate_k = max(k * 4, 20)
+    vec = search_faq(conn, query, candidate_k, permissions,
+                     customer_ready, backend=backend)
+    kw = search_faq_keyword(conn, query, candidate_k, permissions,
+                            customer_ready)
     merged: dict[int, dict] = {}
-    for r in vec + kw:
-        if r["id"] not in merged or r["score"] > merged[r["id"]]["score"]:
-            merged[r["id"]] = r
-    ranked = sorted(merged.values(), key=lambda x: x["score"], reverse=True)
+    ranks: dict[int, list[int]] = {}
+    for source, results in (("vector", vec), ("keyword", kw)):
+        for rank, row in enumerate(results, start=1):
+            item_id = row["id"]
+            merged.setdefault(item_id, row)
+            ranks.setdefault(item_id, []).append(rank)
+            merged[item_id].setdefault("matched_by", []).append(source)
+    for item_id, row in merged.items():
+        row["retrieval_score"] = _rrf(ranks[item_id])
+    ranked = sorted(merged.values(),
+                    key=lambda item: item["retrieval_score"], reverse=True)
     return ranked[:k]
