@@ -131,8 +131,8 @@
         <span class="m-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-8 8H4l2-3a8 8 0 1 1 15-5z"/><path d="M8.5 11h.5M12 11h.5M15.5 11h.5"/></svg></span>问答审计日志</div>
 
       <div class="menu-group">系统管理</div>
-      <div class="menu-item" data-page="users" onclick="showPage('users')">
-        <span class="m-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 3 6v6c0 5 3.8 8.6 9 10 5.2-1.4 9-5 9-10V6z"/><path d="M12 8v4l2.5 2.5"/></svg></span>权限分级</div>
+      <div class="menu-item" data-page="sys" onclick="showPage('sys')">
+        <span class="m-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 3 6v6c0 5 3.8 8.6 9 10 5.2-1.4 9-5 9-10V6z"/><path d="M12 8v4l2.5 2.5"/></svg></span>系统管理</div>
     </nav>
     <div class="sidebar-foot">黄金集 v2 · 57 条 / 35 模块<br>门禁 Recall≥0.9 · MRR≥0.5 · 红线=0</div>
   </aside>
@@ -147,6 +147,7 @@
       <div class="spacer"></div>
       <div class="user-box">
         <span id="cur-user" class="tag tag-blue" style="font-weight:600;">未登录</span>
+        <button class="btn btn-sm" onclick="showChangePassword()" style="margin-left:8px;">修改密码</button>
         <button class="btn btn-sm" onclick="logout()" style="margin-left:8px;">登出</button>
       </div>
     </header>
@@ -320,25 +321,57 @@
         </div>
       </section>
 
-      <!-- ===== 页面：权限分级 ===== -->
-      <section class="page" id="page-users">
-        <div class="card">
-          <h3>用户与角色（admin 可管理 · 生产环境接 SSO/JWT）</h3>
-          <div class="toolbar" style="margin-bottom:6px;">
-            <input class="select" id="nu-id" placeholder="用户 ID，如 u_sales3" style="width:160px;">
-            <input class="select" id="nu-name" placeholder="姓名" style="width:120px;">
-            <select class="select" id="nu-role">
-              <option value="agent">客服 agent</option>
-              <option value="editor">业务员 editor</option>
-              <option value="reviewer">审核员 reviewer</option>
-              <option value="admin">管理员 admin</option>
-            </select>
-            <button class="btn" onclick="createUser()">新建用户</button>
+      <!-- ===== 页面：系统管理（角色与权限 + 账户） ===== -->
+      <section class="page" id="page-sys">
+        <div style="display:flex;gap:8px;margin-bottom:12px;">
+          <button class="btn btn-sm" id="sys-tab-roles" onclick="showSysTab('roles')" style="background:#2563eb;color:#fff;">角色与权限</button>
+          <button class="btn btn-sm" id="sys-tab-accounts" onclick="showSysTab('accounts')">账户管理</button>
+        </div>
+
+        <!-- 角色与权限 -->
+        <div id="sys-panel-roles">
+          <div class="card" style="margin-bottom:12px;">
+            <h3>新建角色</h3>
+            <div class="toolbar">
+              <input class="select" id="nr-code" placeholder="角色编码，如 sales_lead" style="width:150px;">
+              <input class="select" id="nr-name" placeholder="角色名称，如销售主管" style="width:140px;">
+              <input class="select" id="nr-desc" placeholder="说明（可选）" style="width:170px;">
+              <select class="select" id="nr-scope" title="数据可见范围">
+                <option value="full">可见全部数据（含保密）</option>
+                <option value="standard">仅 public + internal</option>
+              </select>
+              <button class="btn" onclick="createRole()">创建角色</button>
+            </div>
           </div>
-          <div style="overflow-x:auto;"><table id="user-table">
-            <thead><tr><th>用户 ID</th><th>姓名</th><th>角色</th><th>权限范围</th><th>调整角色</th></tr></thead>
-            <tbody></tbody>
-          </table>
+          <div class="card">
+            <h3>角色列表（点击「分配权限」按页面/功能树勾选）</h3>
+            <div style="overflow-x:auto;"><table id="role-table">
+              <thead><tr><th>角色</th><th>编码</th><th>数据范围</th><th>权限点数</th><th>内置</th><th>操作</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+        </div>
+
+        <!-- 账户管理 -->
+        <div id="sys-panel-accounts" style="display:none;">
+          <div class="card" style="margin-bottom:12px;">
+            <h3>新建账户</h3>
+            <div class="toolbar">
+              <input class="select" id="na-user" placeholder="登录账号，如 zhang_san" style="width:160px;">
+              <input class="select" id="na-name" placeholder="姓名" style="width:120px;">
+              <select class="select" id="na-role" style="width:140px;"></select>
+              <input class="select" id="na-pass" placeholder="初始密码（留空随机）" style="width:170px;" type="password">
+              <button class="btn" onclick="createAccount()">创建账户</button>
+            </div>
+          </div>
+          <div class="card">
+            <h3>账户列表（admin/admin、editor/editor 为系统默认账户）</h3>
+            <div style="overflow-x:auto;"><table id="account-table">
+              <thead><tr><th>账号</th><th>姓名</th><th>绑定角色</th><th>状态</th><th>需改密</th><th>操作</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
         </div>
       </section>
     </main>
@@ -357,14 +390,15 @@
     </div>
     <div id="login-err" style="display:none;background:#fef2f2;color:#dc2626;font-size:13px;padding:8px 10px;border-radius:6px;margin:12px 0;"></div>
     <form id="login-form" style="margin-top:14px;" onsubmit="return doLogin(event)">
-      <label style="display:block;font-size:12px;color:#475569;margin-bottom:4px;">账号（用户 ID）</label>
-      <input id="login-user" class="select" style="width:100%;padding:9px 10px;font-size:16px;" placeholder="u_admin" autocomplete="username">
+      <label style="display:block;font-size:12px;color:#475569;margin-bottom:4px;">账号</label>
+      <input id="login-user" class="select" style="width:100%;padding:9px 10px;font-size:16px;" placeholder="admin" autocomplete="username">
       <label style="display:block;font-size:12px;color:#475569;margin:12px 0 4px;">密码</label>
       <input id="login-pass" type="password" class="select" style="width:100%;padding:9px 10px;font-size:16px;" placeholder="••••••••" autocomplete="current-password">
       <button class="btn" style="width:100%;margin-top:18px;padding:10px;" type="submit">登 录</button>
     </form>
     <div style="margin-top:16px;font-size:12px;color:#94a3b8;border-top:1px solid #f1f5f9;padding-top:12px;line-height:1.8;">
-      账号由管理员分配。生产环境必须使用强密码并完成首次改密。
+      默认账户：<b>admin / admin</b>（管理员）、<b>editor / editor</b>（业务员）。<br>
+      首次登录后请修改密码；生产环境必须使用强密码。
     </div>
   </div>
 </div>
@@ -372,8 +406,11 @@
 <script>
 const API = '';  // 同源部署；跨域时改为后端地址如 http://localhost:8000
 let currentReport = null;
-let CURRENT_USER = 'u_agent';
-let CURRENT_ROLE = 'agent';
+let CURRENT_USER = '';
+let CURRENT_ROLE = '';
+let CURRENT_ROLES = [];
+let CURRENT_PERMS = [];
+let CURRENT_DATA_SCOPE = 'standard';
 let TEMPLATES = {};
 let CURRENT_SOURCE = null;
 let CURRENT_UPLOAD = null;
@@ -390,7 +427,13 @@ const ROLE_SCOPE = {
 const PAGE_TITLES = {
   agent:'客服辅助', ingest:'数据入录', faq:'知识卡管理', products:'产品与报价',
   trend:'评测总览', audit:'召回审计',
-  redline:'红线案例', qa:'问答审计日志', users:'权限分级'
+  redline:'红线案例', qa:'问答审计日志', sys:'系统管理'
+};
+// 菜单可见性 → 所需权限点
+const PAGE_PERM = {
+  ingest:'ingest.view', faq:'faq.view', products:'faq.view', trend:'eval.view',
+  audit:'audit.view', redline:'redline.view', qa:'qalog.view', sys:'account.manage',
+  agent:'agent.use'
 };
 const STATUS_LABEL = {draft:'待审核', approved:'已通过', deprecated:'已驳回/下线'};
 
@@ -399,6 +442,12 @@ function esc(s){ return (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;
 // ============ 登录 / 鉴权（httpOnly Cookie 会话） ============
 // 会话 Cookie 由服务端 Set-Cookie 下发（HttpOnly+SameSite=Lax），
 // 前端不接触 token，同源 fetch 自动携带。
+
+function hasPerm(code){ return (CURRENT_PERMS||[]).includes(code); }
+function roleLabel(roles){
+  if(!roles || !roles.length) return '无角色';
+  return roles.map(r=>ROLE_LABEL[r]||r).join('、');
+}
 
 function showLogin(){
   document.getElementById('app-view').style.display = 'none';
@@ -409,23 +458,21 @@ function showLogin(){
 function showApp(){
   document.getElementById('login-view').style.display = 'none';
   document.getElementById('app-view').style.display = 'flex';
-  document.getElementById('cur-user').textContent = CURRENT_USER + ' · ' + (ROLE_LABEL[CURRENT_ROLE]||CURRENT_ROLE);
+  document.getElementById('cur-user').textContent = (CURRENT_USER || '') + ' · ' + (CURRENT_ROLE_LABEL() || '未分配角色');
   applyRoleVisibility();
 }
+function CURRENT_ROLE_LABEL(){ return roleLabel(CURRENT_ROLES); }
 function initApp(){
-  showPage(CURRENT_ROLE === 'agent' || location.pathname === '/agent'
-    ? 'agent' : 'ingest');
-  const level = {agent:0,editor:1,reviewer:2,admin:3}[CURRENT_ROLE] || 0;
-  if(level >= 1){ loadBatches(); loadMapping(); }
-  if(level >= 2){ initEvalViews(); }
-  if(level >= 3){ loadUsers(); }
+  showPage(hasPerm('agent.use') && !hasPerm('ingest.view') ? 'agent' : 'ingest');
+  if(hasPerm('ingest.view')){ loadBatches(); loadMapping(); }
+  if(hasPerm('eval.view')){ initEvalViews(); }
+  if(hasPerm('role.manage')){ loadRoles(); }
+  if(hasPerm('account.manage')){ loadAccounts(); }
 }
 function applyRoleVisibility(){
-  const level = {agent:0,editor:1,reviewer:2,admin:3}[CURRENT_ROLE] || 0;
-  const minimum = {ingest:1,products:1,trend:2,audit:2,redline:2,qa:2,users:3};
   document.querySelectorAll('.menu-item[data-page]').forEach(item=>{
-    const need = minimum[item.dataset.page] ?? 0;
-    item.style.display = level >= need ? '' : 'none';
+    const need = PAGE_PERM[item.dataset.page];
+    item.style.display = (need && hasPerm(need)) ? '' : 'none';
   });
   document.querySelectorAll('.menu-group').forEach(group=>{
     let item = group.nextElementSibling;
@@ -454,7 +501,12 @@ async function doLogin(ev){
     });
     const j = await r.json().catch(()=>({}));
     if(!r.ok){ errBox.textContent = j.detail || ('HTTP ' + r.status); errBox.style.display='block'; return false; }
-    CURRENT_USER = j.user.id; CURRENT_ROLE = j.user.role;
+    CURRENT_USER = j.user.name || j.user.username;
+    CURRENT_ROLES = j.user.roles || [];
+    CURRENT_ROLE = (CURRENT_ROLES[0]||'');
+    const u = await fetch(API + '/auth/me').then(r=>r.json()).catch(()=>({}));
+    CURRENT_PERMS = u.permissions || [];
+    CURRENT_DATA_SCOPE = u.data_scope || 'standard';
     showApp();
     if(j.must_change){ showForcePassword(); }
     else { initApp(); }
@@ -464,14 +516,28 @@ async function doLogin(ev){
 
 async function logout(){
   try { await fetch(API + '/auth/logout', {method:'POST', headers:authHeaders()}); } catch(e){}
-  CURRENT_USER = 'u_agent'; CURRENT_ROLE = 'agent';
+  CURRENT_USER = ''; CURRENT_ROLE = ''; CURRENT_ROLES = []; CURRENT_PERMS = [];
   showLogin();
 }
 
-// 强制改密模态（首次登录 / 管理员重置密码后）
-function showForcePassword(){
+// 修改密码模态（顶栏入口 + 首次登录/重置后强制改密共用）
+function showChangePassword(){
   openModal('修改密码', `
-    <p style="font-size:13px;color:var(--bad);margin-bottom:10px;">首次登录或密码已被重置，必须修改密码后才能继续使用。</p>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:10px;">修改后将注销其他设备的登录会话。</p>
+    <label style="display:block;font-size:12px;color:var(--muted);">当前密码</label>
+    <input id="fp-old" type="password" class="select" style="width:100%;margin-bottom:10px;">
+    <label style="display:block;font-size:12px;color:var(--muted);">新密码（至少 8 位）</label>
+    <input id="fp-new" type="password" class="select" style="width:100%;margin-bottom:10px;">
+    <label style="display:block;font-size:12px;color:var(--muted);">确认新密码</label>
+    <input id="fp-new2" type="password" class="select" style="width:100%;">
+    <div id="fp-err" style="display:none;color:var(--bad);font-size:12px;margin-top:8px;"></div>
+    <div style="margin-top:14px;text-align:right;">
+      <button class="btn" onclick="submitForcePassword()">保存</button>
+    </div>`);
+}
+function showForcePassword(){
+  openModal('修改密码（强制）', `
+    <p style="font-size:13px;color:var(--bad);margin-bottom:10px;">首次登录或密码已被管理员重置，必须修改密码后才能继续使用。</p>
     <label style="display:block;font-size:12px;color:var(--muted);">当前密码</label>
     <input id="fp-old" type="password" class="select" style="width:100%;margin-bottom:10px;">
     <label style="display:block;font-size:12px;color:var(--muted);">新密码（至少 8 位）</label>
@@ -507,7 +573,11 @@ async function boot(){
     const me = await fetch(API + '/auth/me');
     if(!me.ok) throw new Error('invalid');
     const u = await me.json();
-    CURRENT_USER = u.id; CURRENT_ROLE = u.role;
+    CURRENT_USER = u.name || u.username;
+    CURRENT_ROLES = u.roles || [];
+    CURRENT_ROLE = (CURRENT_ROLES[0]||'');
+    CURRENT_PERMS = u.permissions || [];
+    CURRENT_DATA_SCOPE = u.data_scope || 'standard';
     showApp(); initApp();
   } catch(e){
     showLogin();
@@ -522,7 +592,7 @@ function showPage(name){
   // 首次进入懒加载
   if(name==='faq') loadFaqs();
   if(name==='products'){ loadProducts(); loadOffers(); }
-  if(name==='users') loadUsers();
+  if(name==='sys'){ loadRoles(); loadAccounts(); }
   if(name==='ingest'){ loadBatches(); loadMapping(); }
   if(name==='trend' || name==='audit' || name==='redline' || name==='qa') initEvalViews();
 }
@@ -1160,55 +1230,248 @@ async function reviewFaq(id, action){
   } catch(e){ showMsg(`${act}失败：${e.message}`, false); }
 }
 
-// ============ 权限分级 ============
-async function loadUsers(){
+// ============ 系统管理：角色与权限 + 账户 ============
+let ROLE_CACHE = [];   // 角色列表缓存（下拉选择用）
+
+function showSysTab(tab){
+  document.getElementById('sys-panel-roles').style.display = tab==='roles' ? '' : 'none';
+  document.getElementById('sys-panel-accounts').style.display = tab==='accounts' ? '' : 'none';
+  document.getElementById('sys-tab-roles').style.background = tab==='roles' ? '#2563eb' : '';
+  document.getElementById('sys-tab-roles').style.color = tab==='roles' ? '#fff' : '';
+  document.getElementById('sys-tab-accounts').style.background = tab==='accounts' ? '#2563eb' : '';
+  document.getElementById('sys-tab-accounts').style.color = tab==='accounts' ? '#fff' : '';
+}
+
+// ---- 角色管理 ----
+async function loadRoles(){
   try {
-    const d = await api('/users');
-    const tb = document.querySelector('#user-table tbody');
-    tb.innerHTML = (d.users||[]).map(u=>`
+    const d = await api('/roles');
+    ROLE_CACHE = d.roles || [];
+    const tb = document.querySelector('#role-table tbody');
+    tb.innerHTML = ROLE_CACHE.map(r=>`
       <tr>
-        <td class="mono">${esc(u.id)}</td>
-        <td>${esc(u.name)}</td>
-        <td><span class="tag ${u.role==='admin'?'tag-red':'tag-blue'}">${ROLE_LABEL[u.role]||u.role}</span></td>
-        <td style="font-size:12px;color:var(--muted);">${ROLE_SCOPE[u.role]||''}</td>
+        <td><b>${esc(r.name)}</b></td>
+        <td class="mono">${esc(r.code)}</td>
+        <td style="font-size:12px;">${r.data_scope==='full'?'全部数据（含保密）':'public + internal'}</td>
+        <td>${(r.permissions||[]).length}</td>
+        <td>${r.builtin?'<span class="tag tag-red">内置</span>':'<span class="tag">自建</span>'}</td>
         <td>
-          <select class="select" style="font-size:12px;padding:4px 8px;" onchange="changeRole('${u.id}', this.value)">
-            ${Object.keys(ROLE_LABEL).map(r=>`<option value="${r}" ${r===u.role?'selected':''}>${ROLE_LABEL[r]}</option>`).join('')}
-          </select>
+          <button class="btn btn-sm" onclick="showRolePermModal(${r.id})">分配权限</button>
+          ${r.builtin?'':'<button class="btn btn-sm" onclick="delRole('+r.id+')">删除</button>'}
         </td>
-      </tr>`).join('') || '<tr><td colspan="5" style="color:var(--muted);text-align:center;">无用户</td></tr>';
+      </tr>`).join('') || '<tr><td colspan="6" style="color:var(--muted);text-align:center;">无角色</td></tr>';
+    fillRoleSelect();
   } catch(e){
-    const tb = document.querySelector('#user-table tbody');
-    tb.innerHTML = '<tr><td colspan="5" style="color:var(--muted);text-align:center;">需要 admin 角色才能查看用户管理</td></tr>';
+    const tb = document.querySelector('#role-table tbody');
+    tb.innerHTML = '<tr><td colspan="6" style="color:var(--muted);text-align:center;">需要角色管理权限（role.manage）</td></tr>';
   }
 }
-
-async function changeRole(uid, role){
+function fillRoleSelect(){
+  const sel = document.getElementById('na-role');
+  if(!sel) return;
+  sel.innerHTML = (ROLE_CACHE||[]).map(r=>`<option value="${esc(r.code)}">${esc(r.name)}</option>`).join('');
+}
+async function createRole(){
+  const code = document.getElementById('nr-code').value.trim();
+  const name = document.getElementById('nr-name').value.trim();
+  const desc = document.getElementById('nr-desc').value.trim();
+  const scope = document.getElementById('nr-scope').value;
+  if(!code || !name){ showMsg('请填写角色编码和名称', false); return; }
+  if(!/^[a-z][a-z0-9_]*$/.test(code)){ showMsg('角色编码需小写字母开头，仅 a-z/0-9/_', false); return; }
   try {
-    const d = await api('/users/'+uid+'/role', {method:'PUT', body: JSON.stringify({role})});
-    showMsg(`已将 ${d.user.name}（${d.user.id}）的角色调整为「${ROLE_LABEL[role]}」`, true);
-    loadUsers();
-  } catch(e){ showMsg('调整角色失败：'+e.message, false); loadUsers(); }
+    const d = await api('/roles', {method:'POST', body: JSON.stringify({code, name, description:desc, data_scope:scope, permissions:[]})});
+    showMsg(`角色「${d.role.name}」已创建，请点击「分配权限」设置权限点`, true);
+    document.getElementById('nr-code').value=''; document.getElementById('nr-name').value=''; document.getElementById('nr-desc').value='';
+    loadRoles();
+  } catch(e){ showMsg('创建角色失败：'+e.message, false); }
+}
+async function delRole(id){
+  if(!confirm('确认删除该角色？绑定该角色的账户将失去相关权限。')) return;
+  try {
+    await api('/roles/'+id, {method:'DELETE'});
+    showMsg('角色已删除', true);
+    loadRoles();
+  } catch(e){ showMsg('删除失败：'+e.message, false); }
 }
 
-async function createUser(){
-  const id = document.getElementById('nu-id').value.trim();
-  const name = document.getElementById('nu-name').value.trim();
-  const role = document.getElementById('nu-role').value;
-  if(!id || !name){ showMsg('请填写用户 ID 和姓名', false); return; }
-  try {
-    const d = await api('/users', {method:'POST', body: JSON.stringify({id, name, role})});
-    if(d.temporary_password){
-      openModal('用户已创建', `<p style="font-size:13px;line-height:1.8;">用户：<b>${esc(d.user.id)}</b><br>
-        初始密码：<code style="font-size:15px;">${esc(d.temporary_password)}</code><br>
-        此密码只显示一次。用户首次登录后必须修改密码。</p>
-        <button class="btn" onclick="closeModal()">我已保存</button>`);
-    } else {
-      showMsg(`已创建用户 ${d.user.name}（${d.user.id} · ${ROLE_LABEL[role]}）`, true);
+// 权限树：模块 → 页面 → 功能 三级勾选
+async function showRolePermModal(roleId){
+  const role = ROLE_CACHE.find(r=>r.id===roleId);
+  const perms = await api('/permissions');
+  const sel = new Set(role.permissions||[]);
+  const byModule = {};
+  (perms.permissions||[]).forEach(p=>{
+    (byModule[p.module] = byModule[p.module] || {})[p.page] = byModule[p.module][p.page] || [];
+    byModule[p.module][p.page].push(p);
+  });
+  let html = `<p style="font-size:13px;color:var(--muted);margin-bottom:10px;">
+    角色：<b>${esc(role.name)}</b>（${esc(role.code)}）· 数据范围：
+    <select id="rp-scope" class="select" style="width:200px;padding:4px 8px;font-size:12px;">
+      <option value="full" ${role.data_scope==='full'?'selected':''}>全部数据（含保密）</option>
+      <option value="standard" ${role.data_scope==='standard'?'selected':''}>仅 public + internal</option>
+    </select></p>`;
+  html += Object.keys(byModule).map(mod=>`
+    <div class="perm-block" style="margin-bottom:10px;border:1px solid var(--border,#e2e8f0);border-radius:8px;padding:10px;">
+      <label style="font-weight:700;font-size:13px;display:flex;align-items:center;gap:6px;">
+        <input type="checkbox" class="perm-mod-cb" data-mod="${escAttr(mod)}" onchange="toggleModule(this)">
+        ${esc(mod)}
+      </label>
+      ${Object.keys(byModule[mod]).map(pg=>`
+        <div class="perm-page" style="margin:6px 0 0 22px;">
+          <label style="font-weight:600;font-size:12px;color:var(--muted,#475569);display:flex;align-items:center;gap:6px;">
+            <input type="checkbox" class="perm-page-cb" data-mod="${escAttr(mod)}" data-page="${escAttr(pg)}" onchange="togglePage(this)">
+            ${esc(pg)}
+          </label>
+          <div style="margin:4px 0 0 22px;display:flex;gap:14px;flex-wrap:wrap;">
+            ${byModule[mod][pg].map(p=>`
+              <label style="font-size:12px;display:flex;align-items:center;gap:4px;">
+                <input type="checkbox" class="perm-cb" value="${p.code}" ${sel.has(p.code)?'checked':''} onchange="syncTreeState(this)">
+                ${esc(p.name)}
+              </label>`).join('')}
+          </div>
+        </div>`).join('')}
+    </div>`).join('');
+  html += `<div style="margin-top:14px;text-align:right;">
+      <button class="btn" onclick="saveRolePerms(${roleId})">保存权限</button>
+      <button class="btn btn-sm" onclick="closeModal()">取消</button>
+    </div>`;
+  openModal(`分配权限 · ${role.name}`, html);
+  // 初始化父级勾选状态
+  document.querySelectorAll('.perm-block').forEach(blk=>{
+    const cbs = blk.querySelectorAll('.perm-cb');
+    const modCb = blk.querySelector('.perm-mod-cb');
+    if(modCb) modCb.checked = cbs.length>0 && [...cbs].every(c=>c.checked);
+    blk.querySelectorAll('.perm-page').forEach(pg=>{
+      const pcbs = pg.querySelectorAll('.perm-cb');
+      const pageCb = pg.querySelector('.perm-page-cb');
+      if(pageCb) pageCb.checked = pcbs.length>0 && [...pcbs].every(c=>c.checked);
+    });
+  });
+}
+function moduleAllChecked(pages, sel){
+  return Object.keys(pages).every(pg=>pageAllChecked(pages[pg], sel));
+}
+function pageAllChecked(items, sel){
+  return items.every(p=>sel.has(p.code));
+}
+function toggleModule(cb){
+  cb.closest('.perm-block').querySelectorAll('.perm-cb').forEach(p=>p.checked = cb.checked);
+  syncTreeState(cb);
+}
+function togglePage(cb){
+  cb.closest('.perm-page').querySelectorAll('.perm-cb').forEach(p=>p.checked = cb.checked);
+  syncTreeState(cb);
+}
+function syncTreeState(cb){
+  const blk = cb.closest('.perm-block');
+  if(blk){
+    const modCb = blk.querySelector('.perm-mod-cb');
+    const allCbs = blk.querySelectorAll('.perm-cb');
+    if(modCb) modCb.checked = allCbs.length>0 && [...allCbs].every(c=>c.checked);
+    const pg = cb.closest('.perm-page');
+    if(pg){
+      const pageCb = pg.querySelector('.perm-page-cb');
+      const pcbs = pg.querySelectorAll('.perm-cb');
+      if(pageCb) pageCb.checked = pcbs.length>0 && [...pcbs].every(c=>c.checked);
     }
-    document.getElementById('nu-id').value = ''; document.getElementById('nu-name').value = '';
-    loadUsers();
-  } catch(e){ showMsg('创建用户失败：'+e.message, false); }
+  }
+}
+function escAttr(s){ return esc(s).replace(/"/g,'&quot;'); }
+async function saveRolePerms(roleId){
+  const perms = [...document.querySelectorAll('.perm-cb:checked')].map(c=>c.value);
+  const scope = document.getElementById('rp-scope').value;
+  const role = ROLE_CACHE.find(r=>r.id===roleId);
+  try {
+    await api('/roles/'+roleId+'/permissions', {method:'PUT', body: JSON.stringify({permissions: perms, data_scope: scope})});
+    closeModal();
+    showMsg(`角色「${role.name}」已保存 ${perms.length} 个权限点`, true);
+    loadRoles();
+  } catch(e){ showMsg('保存权限失败：'+e.message, false); }
+}
+
+// ---- 账户管理 ----
+async function loadAccounts(){
+  try {
+    const d = await api('/accounts');
+    const tb = document.querySelector('#account-table tbody');
+    tb.innerHTML = (d.accounts||[]).map(a=>`
+      <tr>
+        <td class="mono"><b>${esc(a.username)}</b></td>
+        <td>${esc(a.name)}</td>
+        <td>
+          <select class="select" style="font-size:12px;padding:4px 8px;" onchange="setAccountRoles(${a.id}, this.value, this)">
+            <option value="">未绑定</option>
+            ${(ROLE_CACHE||[]).map(r=>`<option value="${esc(r.code)}" ${(a.roles||[]).includes(r.name)?'selected':''}>${esc(r.name)}</option>`).join('')}
+          </select>
+        </td>
+        <td>${a.enabled?'<span class="tag" style="background:#dcfce7;color:#15803d;">启用</span>':'<span class="tag tag-red">停用</span>'}</td>
+        <td>${a.must_change?'<span class="tag tag-red">是</span>':'否'}</td>
+        <td>
+          <button class="btn btn-sm" onclick="resetAccountPassword(${a.id})">重置密码</button>
+          <button class="btn btn-sm" onclick="toggleAccountEnabled(${a.id}, ${!a.enabled})">${a.enabled?'停用':'启用'}</button>
+        </td>
+      </tr>`).join('') || '<tr><td colspan="6" style="color:var(--muted);text-align:center;">无账户</td></tr>';
+  } catch(e){
+    const tb = document.querySelector('#account-table tbody');
+    tb.innerHTML = '<tr><td colspan="6" style="color:var(--muted);text-align:center;">需要账户管理权限（account.manage）</td></tr>';
+  }
+}
+async function createAccount(){
+  const user = document.getElementById('na-user').value.trim();
+  const name = document.getElementById('na-name').value.trim();
+  const role = document.getElementById('na-role').value;
+  const pass = document.getElementById('na-pass').value;
+  if(!user){ showMsg('请填写登录账号', false); return; }
+  try {
+    const d = await api('/accounts', {method:'POST', body: JSON.stringify({
+      username:user, name:name||user, roles: role?[role]:[], initial_password: pass||null
+    })});
+    const pw = d.temporary_password || pass;
+    openModal('账户已创建', `<p style="font-size:13px;line-height:1.8;">
+      账号：<b>${esc(d.account.username)}</b>（${esc(d.account.name)}）<br>
+      ${pw?`初始密码：<code style="font-size:15px;">${esc(pw)}</code><br>`:''}
+      角色：${esc((d.account.roles||[]).join('、')||'未绑定')}<br>
+      ${pw?'此密码只显示一次，用户首次登录后必须修改。':'用户首次登录后必须修改密码。'}</p>
+      <button class="btn" onclick="closeModal()">我已保存</button>`);
+    document.getElementById('na-user').value=''; document.getElementById('na-name').value=''; document.getElementById('na-pass').value='';
+    loadAccounts();
+  } catch(e){ showMsg('创建账户失败：'+e.message, false); }
+}
+async function setAccountRoles(accountId, roleCode, sel){
+  try {
+    const d = await api('/accounts/'+accountId+'/roles', {method:'PUT', body: JSON.stringify({roles: roleCode?[roleCode]:[]})});
+    showMsg(`已更新账户 ${d.account.username} 的角色`, true);
+    loadAccounts();
+  } catch(e){ showMsg('更新角色失败：'+e.message, false); loadAccounts(); }
+}
+async function toggleAccountEnabled(accountId, enabled){
+  try {
+    await api('/accounts/'+accountId+'/enabled', {method:'PUT', body: JSON.stringify({enabled})});
+    showMsg(`账户已${enabled?'启用':'停用'}${enabled?'':'（其会话已注销）'}`, true);
+    loadAccounts();
+  } catch(e){ showMsg('操作失败：'+e.message, false); }
+}
+async function resetAccountPassword(accountId){
+  openModal('重置密码', `
+    <p style="font-size:13px;color:var(--muted);margin-bottom:10px;">留空则生成随机密码；重置后用户首次登录必须改密，并注销其全部会话。</p>
+    <label style="display:block;font-size:12px;color:var(--muted);">新密码（至少 8 位，可留空）</label>
+    <input id="rp-new" type="password" class="select" style="width:100%;margin-bottom:10px;">
+    <div style="text-align:right;">
+      <button class="btn" onclick="doResetPassword(${accountId})">重置</button>
+      <button class="btn btn-sm" onclick="closeModal()">取消</button>
+    </div>`);
+}
+async function doResetPassword(accountId){
+  const np = document.getElementById('rp-new').value;
+  try {
+    const d = await api('/accounts/'+accountId+'/reset-password', {method:'POST', body: JSON.stringify({new_password: np||null})});
+    closeModal();
+    openModal('密码已重置', `<p style="font-size:13px;line-height:1.8;">
+      新密码：<code style="font-size:15px;">${esc(d.temporary_password)}</code><br>
+      此密码只显示一次，用户首次登录后必须修改。</p>
+      <button class="btn" onclick="closeModal()">我已保存</button>`);
+    loadAccounts();
+  } catch(e){ showMsg('重置失败：'+e.message, false); }
 }
 
 // ============ 模态 ============

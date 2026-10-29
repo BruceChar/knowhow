@@ -108,3 +108,116 @@ CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions (user_id);
 
 -- ============ 认证加固 v3：强制改密标志 ============
 ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT false;
+
+-- ============ RBAC v4：system_ 前缀系统表（账户/角色/权限树） ============
+-- 设计：账户 system_account → 角色 system_role → 权限点 system_permission（模块→页面→功能树）
+-- 默认账户：admin/admin（全权限）、editor/editor（业务员）；内置角色 4 个作权限模板，企业可自建角色
+CREATE TABLE IF NOT EXISTS system_account (
+    id                  SERIAL PRIMARY KEY,
+    username            TEXT UNIQUE NOT NULL,
+    display_name        TEXT NOT NULL,
+    password_hash       TEXT NOT NULL,
+    enabled             BOOLEAN NOT NULL DEFAULT true,
+    must_change_password BOOLEAN NOT NULL DEFAULT false,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS system_role (
+    id          SERIAL PRIMARY KEY,
+    code        TEXT UNIQUE NOT NULL,
+    name        TEXT NOT NULL,
+    description TEXT,
+    data_scope  TEXT NOT NULL DEFAULT 'full',   -- 'standard'=public+internal；'full'=全部
+    builtin     BOOLEAN NOT NULL DEFAULT false,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS system_permission (
+    id     SERIAL PRIMARY KEY,
+    code   TEXT UNIQUE NOT NULL,
+    name   TEXT NOT NULL,
+    module TEXT NOT NULL,
+    page   TEXT NOT NULL,
+    sort   INT NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS system_role_permission (
+    role_id         INT NOT NULL REFERENCES system_role(id) ON DELETE CASCADE,
+    permission_code TEXT NOT NULL REFERENCES system_permission(code) ON DELETE CASCADE,
+    PRIMARY KEY (role_id, permission_code)
+);
+CREATE TABLE IF NOT EXISTS system_account_role (
+    account_id INT NOT NULL REFERENCES system_account(id) ON DELETE CASCADE,
+    role_id    INT NOT NULL REFERENCES system_role(id) ON DELETE CASCADE,
+    PRIMARY KEY (account_id, role_id)
+);
+
+-- 会话改关联 system_account
+DROP TABLE IF EXISTS sessions;
+CREATE TABLE sessions (
+    token      TEXT PRIMARY KEY,
+    account_id INT NOT NULL REFERENCES system_account(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expires_at TIMESTAMPTZ NOT NULL,
+    last_seen  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_sessions_account ON sessions (account_id);
+
+-- ============ 权限点树（模块 → 页面 → 功能） ============
+INSERT INTO system_permission (code, name, module, page, sort) VALUES
+  ('ingest.view',     '查看批次',        '数据管理', '数据入录', 10),
+  ('ingest.upload',   '上传文件',        '数据管理', '数据入录', 11),
+  ('ingest.run',      '执行入录',        '数据管理', '数据入录', 12),
+  ('faq.view',        '查看知识卡',      '知识管理', '知识卡管理', 20),
+  ('faq.edit',        '编辑/打标',       '知识管理', '知识卡管理', 21),
+  ('faq.review',      '审核发布',        '知识管理', '知识卡管理', 22),
+  ('faq.deprecate',   '下线/驳回',       '知识管理', '知识卡管理', 23),
+  ('suggestion.view', '查看建议单',      '知识管理', '建议单管理', 30),
+  ('suggestion.submit','提交建议',       '知识管理', '建议单管理', 31),
+  ('suggestion.review','处理建议',       '知识管理', '建议单管理', 32),
+  ('eval.view',       '查看评测',        '质量保障', '评测总览', 40),
+  ('eval.run',        '运行评测',        '质量保障', '评测总览', 41),
+  ('audit.view',      '召回审计',        '质量保障', '召回审计', 42),
+  ('redline.view',    '红线案例',        '质量保障', '红线案例', 43),
+  ('qalog.view',      '问答日志',        '质量保障', '问答审计日志', 44),
+  ('dashboard.view',  '驾驶舱总览',      '系统管理', '驾驶舱', 50),
+  ('account.manage',  '账户管理',        '系统管理', '账户管理', 51),
+  ('role.manage',     '角色与权限',      '系统管理', '角色与权限', 52),
+  ('workspace.view',  '知识浏览',        '员工门户', '知识浏览', 60),
+  ('learn.use',       '学习培训',        '员工门户', '学习路径', 61),
+  ('agent.use',       '客户问答',        '客服工作台','客户问答', 70),
+  ('agent.feedback',  '问答反馈',        '客服工作台','客户问答', 71)
+ON CONFLICT (code) DO NOTHING;
+
+-- ============ 内置角色（模板，不可删） ============
+INSERT INTO system_role (code, name, description, data_scope, builtin) VALUES
+  ('admin',    '管理员', '全部权限 + 系统管理',        'full',     true),
+  ('reviewer', '审核员', '知识审核/打标/评测/审计',     'full',     true),
+  ('editor',   '业务员', '知识编辑/入录/共建',          'full',     true),
+  ('agent',    '客服',   '只读检索问答 + 提交建议',     'standard', true)
+ON CONFLICT (code) DO NOTHING;
+
+-- 内置角色权限模板
+INSERT INTO system_role_permission (role_id, permission_code)
+SELECT r.id, p.code FROM system_role r, system_permission p
+WHERE r.code='admin'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO system_role_permission (role_id, permission_code)
+SELECT r.id, p.code FROM system_role r, system_permission p
+WHERE r.code='reviewer' AND p.code IN
+  ('faq.view','faq.edit','faq.review','faq.deprecate','suggestion.view','suggestion.submit','suggestion.review',
+   'eval.view','eval.run','audit.view','redline.view','qalog.view','dashboard.view',
+   'workspace.view','learn.use','agent.use','agent.feedback')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO system_role_permission (role_id, permission_code)
+SELECT r.id, p.code FROM system_role r, system_permission p
+WHERE r.code='editor' AND p.code IN
+  ('faq.view','faq.edit','ingest.view','ingest.upload','ingest.run',
+   'suggestion.view','suggestion.submit','dashboard.view',
+   'workspace.view','learn.use','agent.use','agent.feedback')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO system_role_permission (role_id, permission_code)
+SELECT r.id, p.code FROM system_role r, system_permission p
+WHERE r.code='agent' AND p.code IN
+  ('faq.view','suggestion.submit','workspace.view','agent.use','agent.feedback')
+ON CONFLICT DO NOTHING;

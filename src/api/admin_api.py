@@ -15,7 +15,7 @@ from src.auth.rbac import (
     User,
     data_permission_clause,
     get_current_user,
-    require_role,
+    require_permission,
 )
 from src.config import RAG_DSN as DSN, MAX_UPLOAD_MB
 from src.config import SESSION_TTL_HOURS, LOGIN_LOCK_MINUTES
@@ -147,7 +147,7 @@ def inquiry_compat(body: AskBody, user: User = Depends(get_current_user)):
 
 @app.post("/api/v1/feedback")
 def submit_feedback(body: FeedbackBody,
-                    user: User = Depends(require_role("agent"))):
+                    user: User = Depends(require_permission("agent.use"))):
     """Record operator judgement against one immutable Q&A audit record."""
     if body.verdict not in {"correct", "incorrect", "needs_review"}:
         raise HTTPException(400, "verdict 必须是 correct/incorrect/needs_review")
@@ -192,7 +192,7 @@ def submit_feedback(body: FeedbackBody,
 
 @app.get("/api/v1/feedback/issues")
 def list_feedback_issues(status: str | None = "open",
-                         user: User = Depends(require_role("reviewer"))):
+                         user: User = Depends(require_permission("audit.view"))):
     where, params = [], []
     if status:
         where.append("i.status=%s"); params.append(status)
@@ -268,7 +268,7 @@ def get_faq(faq_id: int, user: User = Depends(get_current_user)):
 
 @app.put("/faq/{faq_id}")
 def update_faq(faq_id: int, body: FAQUpdate,
-               user: User = Depends(require_role("editor"))):
+               user: User = Depends(require_permission("faq.edit"))):
     """Create a candidate edit while retaining the last published snapshot."""
     fields, params = [], []
     for k, v in body.model_dump(exclude_none=True).items():
@@ -308,7 +308,7 @@ def update_faq(faq_id: int, body: FAQUpdate,
 
 @app.post("/faq/{faq_id}/tags")
 def set_tags(faq_id: int, body: FAQUpdate,
-             user: User = Depends(require_role("editor"))):
+             user: User = Depends(require_permission("faq.edit"))):
     """5 维打标：category / tags / risk_level / action_level / permission。"""
     upd, params = [], []
     for col in ("category", "tags", "risk_level", "action_level", "permission",
@@ -346,7 +346,7 @@ def set_tags(faq_id: int, body: FAQUpdate,
 @app.get("/products")
 def list_products(status: str | None = None,
                   q: str | None = None,
-                  user: User = Depends(require_role("editor"))):
+                  user: User = Depends(require_permission("faq.view"))):
     where, params = [], []
     if status:
         where.append("s.status=%s"); params.append(status)
@@ -379,7 +379,7 @@ def list_products(status: str | None = None,
 @app.post("/products/{sku_id}/approve")
 def approve_product(sku_id: int,
                     body: ReviewAction | None = None,
-                    user: User = Depends(require_role("reviewer"))):
+                    user: User = Depends(require_permission("faq.review"))):
     with _conn() as conn, conn.cursor() as cur:
         cur.execute("""
             UPDATE sku
@@ -399,7 +399,7 @@ def approve_product(sku_id: int,
 @app.post("/products/{sku_id}/reject")
 def reject_product(sku_id: int,
                    body: ReviewAction | None = None,
-                   user: User = Depends(require_role("reviewer"))):
+                   user: User = Depends(require_permission("faq.review"))):
     with _conn() as conn, conn.cursor() as cur:
         cur.execute("""
             UPDATE sku SET status='deprecated', approved_by=%s,
@@ -415,7 +415,7 @@ def reject_product(sku_id: int,
 @app.get("/offers")
 def list_offers(status: str | None = None,
                 q: str | None = None,
-                user: User = Depends(require_role("editor"))):
+                user: User = Depends(require_permission("faq.view"))):
     where, params = [], []
     if status:
         where.append("o.status=%s"); params.append(status)
@@ -446,7 +446,7 @@ def list_offers(status: str | None = None,
 @app.post("/offers/{offer_id}/approve")
 def approve_offer(offer_id: int,
                   body: OfferReviewAction | None = None,
-                  user: User = Depends(require_role("reviewer"))):
+                  user: User = Depends(require_permission("faq.review"))):
     """Publish one price atomically and expire the prior active price."""
     with _conn() as conn, conn.cursor() as cur:
         cur.execute("""
@@ -485,7 +485,7 @@ def approve_offer(offer_id: int,
 @app.post("/offers/{offer_id}/reject")
 def reject_offer(offer_id: int,
                  body: OfferReviewAction | None = None,
-                 user: User = Depends(require_role("reviewer"))):
+                 user: User = Depends(require_permission("faq.review"))):
     with _conn() as conn, conn.cursor() as cur:
         cur.execute("""
             UPDATE offer SET status='rejected', approved_by=%s,
@@ -502,7 +502,7 @@ def reject_offer(offer_id: int,
 
 @app.post("/faq/{faq_id}/approve")
 def approve_faq(faq_id: int, body: ReviewAction | None = None,
-                user: User = Depends(require_role("reviewer"))):
+                user: User = Depends(require_permission("faq.review"))):
     """Approve a candidate and atomically publish its immutable snapshot."""
     with _conn() as conn, conn.cursor() as cur:
         cur.execute("""
@@ -571,7 +571,7 @@ def approve_faq(faq_id: int, body: ReviewAction | None = None,
 
 @app.post("/faq/{faq_id}/reject")
 def reject_faq(faq_id: int, body: ReviewAction | None = None,
-               user: User = Depends(require_role("reviewer"))):
+               user: User = Depends(require_permission("faq.review"))):
     """审核驳回：draft → rejected（保持可编辑）。"""
     with _conn() as conn, conn.cursor() as cur:
         cur.execute("UPDATE faq SET status='deprecated', approved_by=%s, "
@@ -586,7 +586,7 @@ def reject_faq(faq_id: int, body: ReviewAction | None = None,
 # ============ 入录批次查询（管理员） ============
 
 @app.get("/batches")
-def list_batches(user: User = Depends(require_role("reviewer"))):
+def list_batches(user: User = Depends(require_permission("ingest.view"))):
     with _conn() as conn, conn.cursor() as cur:
         cur.execute("""
             SELECT id, source_file, source_kind, total_rows, loaded_rows,
@@ -619,8 +619,8 @@ def login(body: LoginBody, request: Request):
     if info.get("locked"):
         raise HTTPException(429, f"失败次数过多，已锁定 {LOGIN_LOCK_MINUTES} 分钟")
     resp = JSONResponse({"ok": True,
-                         "user": {"id": info["id"], "name": info["name"],
-                                  "role": info["role"]},
+                         "user": {"id": info["id"], "username": info.get("username", ""),
+                                  "name": info["name"], "roles": info.get("roles", [])},
                          "must_change": info.get("must_change", False)})
     resp.set_cookie(SESSION_COOKIE, info["token"],
                     httponly=True, samesite="lax", max_age=SESSION_TTL_HOURS * 3600,
@@ -645,8 +645,10 @@ def logout(request: Request, user: User = Depends(get_current_user)):
 
 @app.get("/auth/me")
 def me(user: User = Depends(get_current_user)):
-    """当前登录用户信息（前端鉴权初始化用）。"""
-    return {"id": user.id, "name": user.name, "role": user.role}
+    """当前登录账户信息（前端鉴权初始化用）。"""
+    return {"id": user.id, "username": user.username, "name": user.name,
+            "roles": user.roles, "permissions": sorted(user.permissions),
+            "data_scope": user.data_scope}
 
 
 class ChangePasswordBody(BaseModel):
@@ -662,7 +664,8 @@ def change_password(body: ChangePasswordBody, request: Request,
     if len(body.new_password) < 8:
         raise HTTPException(400, "新密码至少 8 位")
     with psycopg.connect(DSN) as conn, conn.cursor() as cur:
-        cur.execute("SELECT password_hash FROM users WHERE id=%s", (user.id,))
+        cur.execute("SELECT password_hash FROM system_account WHERE id=%s",
+                    (user.id,))
         row = cur.fetchone()
     if not row or not _auth.verify_password(body.old_password, row[0]):
         raise HTTPException(400, "当前密码错误")
@@ -698,7 +701,7 @@ GOLDSET_PATH = os.environ.get("GOLDSET_PATH",
 
 @app.post("/eval/run")
 def run_eval(dev: bool = False,
-             user: User = Depends(require_role("reviewer"))):
+             user: User = Depends(require_permission("eval.run"))):
     """触发一次评测；生产门禁默认只使用已发布快照。"""
     from src.core import eval_runner
     cases = eval_runner.load_goldset(GOLDSET_PATH)
@@ -716,7 +719,7 @@ def run_eval(dev: bool = False,
 
 @app.get("/eval/reports")
 def list_eval_reports(limit: int = Query(default=20, le=100),
-                      user: User = Depends(require_role("reviewer"))):
+                      user: User = Depends(require_permission("eval.view"))):
     """评测历史（趋势看板数据）。"""
     with _conn() as conn, conn.cursor() as cur:
         cur.execute("""
@@ -734,7 +737,7 @@ def list_eval_reports(limit: int = Query(default=20, le=100),
 
 @app.get("/eval/reports/{report_id}")
 def get_eval_report(report_id: int,
-                    user: User = Depends(require_role("reviewer"))):
+                    user: User = Depends(require_permission("eval.view"))):
     """报告明细：含 per-case 召回审计（query/hit/top5/rr）与红线详情。"""
     with _conn() as conn, conn.cursor() as cur:
         cur.execute("""
@@ -757,7 +760,7 @@ def get_eval_report(report_id: int,
 @app.get("/audit-log")
 def list_audit_log(limit: int = Query(default=50, le=200),
                    decision: str | None = None,
-                   user: User = Depends(require_role("reviewer"))):
+                   user: User = Depends(require_permission("audit.view"))):
     """问答审计：每次客服交互的检索决策、引用、耗时。"""
     where, params = [], []
     if decision:
@@ -791,7 +794,7 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 @app.post("/upload")
 def upload_file(file: UploadFile = File(...),
-                user: User = Depends(require_role("editor"))):
+                user: User = Depends(require_permission("ingest.upload"))):
     """上传原始数据文件（xlsx/json/docx…），存 data/uploads，返回路径与哈希。"""
     suffix = pathlib.Path(file.filename or "file").suffix.lower()
     if suffix not in {".xlsx", ".xls", ".json", ".docx", ".csv"}:
@@ -861,7 +864,7 @@ def _mapping_config(config_key: str) -> dict:
 
 @app.post("/ingest/run")
 def ingest_run(body: IngestRunBody,
-               user: User = Depends(require_role("editor"))):
+               user: User = Depends(require_permission("ingest.run"))):
     """执行入录：文件 → 解析/映射/校验/入库，返回批次统计。"""
     from src.ingest import pipeline
     try:
@@ -874,7 +877,7 @@ def ingest_run(body: IngestRunBody,
 
 
 @app.get("/api/v1/import/templates")
-def import_templates(user: User = Depends(require_role("editor"))):
+def import_templates(user: User = Depends(require_permission("ingest.view"))):
     from src.config_loader import CONFIG_DIR
     templates: dict[str, dict] = {}
     if CONFIG_DIR.exists():
@@ -905,7 +908,7 @@ def import_templates(user: User = Depends(require_role("editor"))):
 
 @app.post("/api/v1/import/templates")
 def save_import_template(body: ImportTemplateBody,
-                         user: User = Depends(require_role("reviewer"))):
+                         user: User = Depends(require_permission("ingest.view"))):
     if not body.config_key.strip():
         raise HTTPException(400, "config_key 不能为空")
     with _conn() as conn, conn.cursor() as cur:
@@ -938,7 +941,7 @@ def save_import_template(body: ImportTemplateBody,
 
 @app.post("/api/v1/import/analyze")
 def analyze_import_source(body: SourceAnalyzeBody,
-                          user: User = Depends(require_role("editor"))):
+                          user: User = Depends(require_permission("ingest.run"))):
     from src.ingest.studio import analyze_source, suggest_mapping
     try:
         result = analyze_source(body.path)
@@ -953,7 +956,7 @@ def analyze_import_source(body: SourceAnalyzeBody,
 
 @app.post("/api/v1/import/preview")
 def preview_import_data(body: ImportPreviewBody,
-                        user: User = Depends(require_role("editor"))):
+                        user: User = Depends(require_permission("ingest.run"))):
     from src.ingest.studio import preview_import
     cfg = _mapping_config(body.template_key)
     try:
@@ -966,7 +969,7 @@ def preview_import_data(body: ImportPreviewBody,
 
 @app.post("/api/v1/import/execute")
 def execute_import_data(body: ImportExecuteBody,
-                        user: User = Depends(require_role("editor"))):
+                        user: User = Depends(require_permission("ingest.run"))):
     from src.ingest.studio import execute_import
     cfg = _mapping_config(body.template_key)
     try:
@@ -986,7 +989,7 @@ def execute_import_data(body: ImportExecuteBody,
 
 @app.get("/batches/{batch_id}")
 def get_batch(batch_id: int,
-              user: User = Depends(require_role("reviewer"))):
+              user: User = Depends(require_permission("ingest.view"))):
     """批次详情：统计 + raw_data 明细（bad/pending_manual 可审计）。"""
     with _conn() as conn, conn.cursor() as cur:
         cur.execute("""
@@ -1015,7 +1018,7 @@ def get_batch(batch_id: int,
 
 
 @app.get("/mapping-config")
-def list_mapping_configs(user: User = Depends(require_role("reviewer"))):
+def list_mapping_configs(user: User = Depends(require_permission("ingest.view"))):
     """可用映射配置（YAML 基线 + DB 运行时通道）。"""
     from src.config_loader import CONFIG_DIR
     cfgs = [p.stem for p in CONFIG_DIR.glob("*.yaml")] if CONFIG_DIR.exists() else []
@@ -1029,51 +1032,138 @@ def list_mapping_configs(user: User = Depends(require_role("reviewer"))):
     return {"yaml": cfgs, "db": db_cfgs}
 
 
-# ============ 权限管理（仅 admin） ============
+# ============ 权限管理（system_ 账户/角色/权限树，仅 admin） ============
 
-class UserCreate(BaseModel):
-    id: str
-    name: str
-    role: str
+class AccountCreate(BaseModel):
+    username: str
+    name: str | None = None
+    roles: list[str] = []
     initial_password: str | None = None
 
 
-class RoleUpdate(BaseModel):
-    role: str
+class AccountRolesUpdate(BaseModel):
+    roles: list[str] = []
 
 
-@app.get("/users")
-def list_users_api(user: User = Depends(require_role("admin"))):
-    """用户列表（含角色），供管理端权限分级展示。"""
+class AccountPasswordReset(BaseModel):
+    new_password: str | None = None
+
+
+class RoleCreate(BaseModel):
+    code: str
+    name: str
+    description: str | None = None
+    data_scope: str = "full"          # 'standard'=public+internal；'full'=全部
+    permissions: list[str] = []
+
+
+class RolePermissionsUpdate(BaseModel):
+    permissions: list[str] = []
+    data_scope: str | None = None   # 可选：一并更新数据可见范围
+
+
+@app.get("/permissions")
+def list_permissions_api(user: User = Depends(require_permission("role.manage"))):
+    """权限点（模块→页面→功能树），供角色分配勾选。"""
     from src.auth import rbac
-    return {"users": rbac.list_users(DSN)}
+    return {"permissions": rbac.list_permissions(DSN)}
 
 
-@app.post("/users")
-def create_user_api(body: UserCreate,
-                    user: User = Depends(require_role("admin"))):
-    """新建用户并分配角色。"""
+@app.get("/roles")
+def list_roles_api(user: User = Depends(require_permission("role.manage"))):
+    from src.auth import rbac
+    return {"roles": rbac.list_roles(DSN)}
+
+
+@app.post("/roles")
+def create_role_api(body: RoleCreate,
+                    user: User = Depends(require_permission("role.manage"))):
     from src.auth import rbac
     try:
-        u, temp_password = rbac.create_user(
-            body.id, body.name, body.role, body.initial_password, DSN
-        )
+        r = rbac.create_role(body.code, body.name, body.description or "",
+                             body.data_scope, body.permissions, DSN)
     except ValueError as e:
         raise HTTPException(400, str(e))
-    return {
-        "ok": True,
-        "user": {"id": u.id, "name": u.name, "role": u.role},
-        "temporary_password": temp_password,
-    }
+    return {"ok": True, "role": r}
 
 
-@app.put("/users/{uid}/role")
-def change_user_role(uid: str, body: RoleUpdate,
-                     user: User = Depends(require_role("admin"))):
-    """变更用户角色（权限分级核心操作）。"""
+@app.put("/roles/{role_id}/permissions")
+def update_role_permissions_api(
+        role_id: int, body: RolePermissionsUpdate,
+        user: User = Depends(require_permission("role.manage"))):
+    """替换式重设角色权限点（可选同时更新数据范围）。"""
     from src.auth import rbac
     try:
-        u = rbac.update_user_role(uid, body.role, DSN)
+        rbac.update_role_permissions(role_id, body.permissions, DSN)
+        if body.data_scope in ("full", "standard"):
+            with psycopg.connect(DSN) as conn, conn.cursor() as cur:
+                cur.execute("UPDATE system_role SET data_scope=%s WHERE id=%s",
+                            (body.data_scope, role_id))
+                conn.commit()
+        r = next(rr for rr in rbac.list_roles(DSN) if rr["id"] == role_id)
+    except (ValueError, StopIteration) as e:
+        raise HTTPException(404, "角色不存在")
+    return {"ok": True, "role": r}
+
+
+@app.delete("/roles/{role_id}")
+def delete_role_api(role_id: int,
+                    user: User = Depends(require_permission("role.manage"))):
+    from src.auth import rbac
+    try:
+        rbac.delete_role(role_id, DSN)
     except ValueError as e:
         raise HTTPException(400, str(e))
-    return {"ok": True, "user": {"id": u.id, "name": u.name, "role": u.role}}
+    return {"ok": True}
+
+
+@app.get("/accounts")
+def list_accounts_api(user: User = Depends(require_permission("account.manage"))):
+    """账户列表（含绑定角色），供管理端账户管理展示。"""
+    from src.auth import rbac
+    return {"accounts": rbac.list_accounts(DSN)}
+
+
+@app.post("/accounts")
+def create_account_api(body: AccountCreate,
+                       user: User = Depends(require_permission("account.manage"))):
+    """新建账户并绑定角色；返回临时密码（未指定时随机）。"""
+    from src.auth import rbac
+    try:
+        acct, temp_password = rbac.create_account(
+            body.username, body.name or body.username, body.roles or [],
+            body.initial_password, DSN)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"ok": True, "account": acct,
+            "temporary_password": temp_password}
+
+
+@app.put("/accounts/{account_id}/roles")
+def change_account_roles(account_id: int, body: AccountRolesUpdate,
+                         user: User = Depends(require_permission("account.manage"))):
+    """替换式重绑账户角色。"""
+    from src.auth import rbac
+    rbac.update_account_roles(account_id, body.roles, DSN)
+    acct = next(a for a in rbac.list_accounts(DSN) if a["id"] == account_id)
+    return {"ok": True, "account": acct}
+
+
+@app.put("/accounts/{account_id}/enabled")
+def set_account_enabled_api(account_id: int, body: dict,
+                            user: User = Depends(require_permission("account.manage"))):
+    """启用/停用账户；停用同时注销其会话。"""
+    from src.auth import rbac
+    enabled = bool(body.get("enabled", True))
+    rbac.set_account_enabled(account_id, enabled, DSN)
+    return {"ok": True}
+
+
+@app.post("/accounts/{account_id}/reset-password")
+def reset_account_password_api(
+        account_id: int, body: AccountPasswordReset,
+        user: User = Depends(require_permission("account.manage"))):
+    """管理员重置密码（指定或随机）；重置后强制首登改密、注销会话。"""
+    from src.auth import rbac
+    pw = rbac.reset_account_password(account_id, body.new_password, DSN)
+    return {"ok": True, "temporary_password": pw}

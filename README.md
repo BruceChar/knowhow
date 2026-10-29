@@ -4,15 +4,22 @@
 数据入录、业务人员 Import Studio、产品与报价审核、混合检索、客服辅助、
 反馈回流、评测、权限和后台管理。
 
-## Quick start
+## 本地快速启动（uv）
 
-1. 复制环境变量：
+1. 安装并同步依赖：
+
+   ```bash
+   uv sync
+   ```
+
+2. 复制并检查环境变量：
 
    ```bash
    cp .env.example .env
    ```
 
-2. 修改 `.env` 中的 `KNOWHOW_SECRET`、数据库密码和模型配置。
+   本地开发至少确认 `.env` 中的 `RAG_DSN` 与数据库一致。生产环境必须另外设置
+   `KNOWHOW_SECRET`、强数据库密码和 `SEED_PASSWORDS`。
 
 3. 启动数据库：
 
@@ -23,19 +30,45 @@
 4. 执行数据库迁移：
 
    ```bash
-   .venv/bin/python scripts/migrate.py
+   uv run python scripts/migrate.py
    ```
 
 5. 启动服务：
 
    ```bash
-   HF_HUB_OFFLINE=1 .venv/bin/uvicorn src.api.admin_api:app --host 0.0.0.0 --port 8000
+   HF_HUB_OFFLINE=1 uv run python -m uvicorn \
+     src.api.admin_api:app --host 0.0.0.0 --port 8000
    ```
 
 6. 打开 `http://localhost:8000/agent` 进入客服辅助，或打开
    `http://localhost:8000/admin` 进入知识治理后台。
 
 开发环境可设置 `KNOWHOW_DEV_AUTH=1` 使用 `X-User-Id` 调试；生产必须关闭。默认演示账号仅用于本地开发，生产启动时应通过 `SEED_PASSWORDS` 注入强密码并首次改密。
+
+### 初始账号与密码
+
+未设置 `KNOWHOW_PROD=1`、也没有通过 `SEED_PASSWORDS` 覆盖时，系统会创建以下
+本地开发账号：
+
+| 用户 ID | 角色 | 初始密码 |
+| --- | --- | --- |
+| `u_admin` | 管理员 | `admin123` |
+| `u_reviewer` | 审核员 | `reviewer123` |
+| `u_editor` | 业务员 | `editor123` |
+| `u_agent` | 客服 | `agent123` |
+
+当前本地管理员入口使用 `u_admin` / `admin123`。这些密码只适用于本机开发，
+不得用于生产、局域网共享或内网穿透环境。生产启动时必须配置：
+
+```dotenv
+KNOWHOW_PROD=1
+KNOWHOW_DEV_AUTH=0
+COOKIE_SECURE=1
+SEED_PASSWORDS=u_admin=足够长的强密码,u_reviewer=强密码,u_editor=强密码,u_agent=强密码
+```
+
+如果生产模式未提供 `SEED_PASSWORDS`，系统会为首次创建的种子账号随机生成密码，
+并在启动日志中打印一次；应立即保存并完成首次改密。
 
 ## 当前可用闭环
 
@@ -50,25 +83,28 @@
 现有开发评测当成生产验收。完整边界和验证记录见
 [`docs/实现状态与验收记录.md`](docs/实现状态与验收记录.md)。
 
-## CLI
+## 使用 `uv run python` 运行命令行任务
 
 ```bash
-# 产品图鉴
-.venv/bin/python src/ingest/facts.py data/raw/products.xlsx \
+# 产品图鉴/产品主数据
+uv run python src/ingest/facts.py data/raw/products.xlsx \
   --config jiacong_facts
 
 # FAQ JSON
-.venv/bin/python src/ingest/faq.py data/raw/faq.json
+uv run python src/ingest/faq.py data/raw/faq.json
 
 # 评测（--dev 会检索未发布草稿，不能作为生产门禁）
-.venv/bin/python src/core/eval_runner.py \
+uv run python src/core/eval_runner.py \
   data/goldset/jiacong_faq_goldset_v2.json --dev
+
+# 检查数据库迁移状态；已执行的迁移不会重复运行
+uv run python scripts/migrate.py
 ```
 
-## Tests
+## 测试
 
 ```bash
-.venv/bin/python -m unittest discover -s tests -v
+uv run python -m unittest discover -s tests -v
 ```
 
 ## Architecture

@@ -44,45 +44,66 @@ def verify_password(password: str, stored: str) -> bool:
         return False
 
 
-# ---------------- 种子用户（演示默认密码，生产必须修改） ----------------
+# ---------------- 默认账户（system_account） ----------------
+# 系统默认只有两个账户：admin/admin（管理员）、editor/editor（业务员）。
+# 其余人员由 admin 在"账户管理"中创建并绑定角色。
 
-DEFAULT_USERS = [
-    ("u_admin", "管理员", "admin", "admin123"),
-    ("u_reviewer", "审核员", "reviewer", "reviewer123"),
-    ("u_editor", "业务员", "editor", "editor123"),
-    ("u_agent", "客服", "agent", "agent123"),
+DEFAULT_ACCOUNTS = [
+    ("admin", "管理员", "admin", "admin"),      # 绑定内置角色 admin
+    ("editor", "业务员", "editor", "editor"),   # 绑定内置角色 editor
 ]
+
+_ACCOUNT_ROLE_CODE = {
+    "admin": "admin",
+    "editor": "editor",
+}
 
 
 def seed_users(dsn: str = DEFAULT_DSN, force: bool = False) -> int:
-    """幂等写入种子用户；force=True 时重置密码。
+    """幂等写入默认账户（system_account）+ 角色绑定；force=True 时重置密码。
 
     密码策略（生产）：
     - PROD=1 且未注入 SEED_PASSWORDS → 随机生成密码并打印一次
-    - 注入 SEED_PASSWORDS → 使用注入的强密码
-    - 开发模式 → 演示默认密码（文档已注明仅限本地）
+    - 注入 SEED_PASSWORDS（格式 admin=xxx,editor=xxx）→ 使用注入的强密码
+    - 开发模式 → 演示默认密码（admin/admin、editor/editor，仅限本地）
     """
     created = 0
     with psycopg.connect(dsn) as conn, conn.cursor() as cur:
-        for uid, name, role, dev_pw in DEFAULT_USERS:
-            cur.execute("SELECT count(*) FROM users WHERE id=%s", (uid,))
-            exists = cur.fetchone()[0] > 0
+        cur.execute("SELECT id FROM system_role WHERE code='admin'")
+        admin_role_id = cur.fetchone()[0]
+        for username, display, role_code, dev_pw in DEFAULT_ACCOUNTS:
+            cur.execute("SELECT id FROM system_account WHERE username=%s", (username,))
+            row = cur.fetchone()
+            exists = row is not None
             if not exists or force:
-                if uid in SEED_PASSWORDS:
-                    pw = SEED_PASSWORDS[uid]
+                if username in SEED_PASSWORDS:
+                    pw = SEED_PASSWORDS[username]
                 elif PROD:
                     pw = secrets.token_urlsafe(12)
-                    print(f"[seed] 生成随机密码 {uid}={pw}（仅本次打印，请立即保存）")
+                    print(f"[seed] 生成随机密码 {username}={pw}（仅本次打印，请立即保存）")
                 else:
                     pw = dev_pw
+                if exists:
+                    account_id = row[0]
+                    cur.execute("""
+                        UPDATE system_account
+                        SET password_hash=%s, must_change_password=%s
+                        WHERE id=%s
+                    """, (hash_password(pw), force or PROD and username not in SEED_PASSWORDS,
+                          account_id))
+                else:
+                    cur.execute("""
+                        INSERT INTO system_account (username, display_name, password_hash,
+                                                    must_change_password)
+                        VALUES (%s,%s,%s,%s) RETURNING id
+                    """, (username, display, hash_password(pw),
+                          force or PROD and username not in SEED_PASSWORDS))
+                    account_id = cur.fetchone()[0]
                 cur.execute("""
-                    INSERT INTO users (id, name, role, password_hash, must_change_password)
-                    VALUES (%s,%s,%s,%s,%s)
-                    ON CONFLICT (id) DO UPDATE
-                      SET name=EXCLUDED.name, role=EXCLUDED.role,
-                          password_hash=EXCLUDED.password_hash,
-                          must_change_password=EXCLUDED.must_change_password
-                """, (uid, name, role, hash_password(pw), force or PROD and uid not in SEED_PASSWORDS))
+                    INSERT INTO system_account_role (account_id, role_id)
+                    SELECT %s, id FROM system_role WHERE code=%s
+                    ON CONFLICT DO NOTHING
+                """, (account_id, _ACCOUNT_ROLE_CODE.get(username, role_code)))
                 created += 1
         conn.commit()
     return created
@@ -134,35 +155,58 @@ def _session_fingerprint(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
-def create_session(user_id: str, dsn: str = DEFAULT_DSN) -> str:
+def create_session(account_id: int, dsn: str = DEFAULT_DSN) -> str:
     token = secrets.token_urlsafe(32)
     token_hash = _session_fingerprint(token)
     exp = datetime.now(timezone.utc) + timedelta(hours=SESSION_TTL_HOURS)
     with psycopg.connect(dsn) as conn, conn.cursor() as cur:
         cur.execute("""
-            INSERT INTO sessions (token, user_id, expires_at)
+            INSERT INTO sessions (token, account_id, expires_at)
             VALUES (%s,%s,%s)
-        """, (token_hash, user_id, exp))
+        """, (token_hash, account_id, exp))
         conn.commit()
     return token
 
 
 def get_session_user(token: str, dsn: str = DEFAULT_DSN) -> Optional[dict]:
-    """按 token 查有效会话 → 用户；同时滑动续期 last_seen。"""
+    """按 token 查有效会话 → 账户（含多角色与权限集合）；滑动续期 last_seen。"""
     token_hash = _session_fingerprint(token)
     with psycopg.connect(dsn) as conn, conn.cursor() as cur:
         cur.execute("""
-            SELECT u.id, u.name, u.role
-            FROM sessions s JOIN users u ON u.id = s.user_id
+            SELECT a.id, a.username, a.display_name, a.enabled
+            FROM sessions s JOIN system_account a ON a.id = s.account_id
             WHERE s.token=%s AND s.expires_at > now()
         """, (token_hash,))
         row = cur.fetchone()
-        if row:
-            cur.execute("UPDATE sessions SET last_seen=now() WHERE token=%s", (token_hash,))
-            conn.commit()
-    if not row:
-        return None
-    return {"id": row[0], "name": row[1], "role": row[2]}
+        if not row or not row[3]:
+            return None
+        # 角色与权限集合
+        cur.execute("""
+            SELECT r.code FROM system_role r
+            JOIN system_account_role ar ON ar.role_id = r.id
+            WHERE ar.account_id=%s
+        """, (row[0],))
+        roles = [x[0] for x in cur.fetchall()]
+        cur.execute("""
+            SELECT bool_or(r.data_scope='full')
+            FROM system_role r
+            JOIN system_account_role ar ON ar.role_id = r.id
+            WHERE ar.account_id=%s
+        """, (row[0],))
+        has_full = cur.fetchone()[0] or False
+        cur.execute("""
+            SELECT DISTINCT rp.permission_code
+            FROM system_role_permission rp
+            JOIN system_role r ON r.id = rp.role_id
+            JOIN system_account_role ar ON ar.role_id = r.id
+            WHERE ar.account_id=%s
+        """, (row[0],))
+        permissions = {x[0] for x in cur.fetchall()}
+        cur.execute("UPDATE sessions SET last_seen=now() WHERE token=%s", (token_hash,))
+        conn.commit()
+    return {"id": row[0], "username": row[1], "name": row[2],
+            "roles": roles, "permissions": permissions,
+            "data_scope": ("full" if has_full else "standard")}
 
 
 def delete_session(token: str, dsn: str = DEFAULT_DSN) -> bool:
@@ -175,7 +219,7 @@ def delete_session(token: str, dsn: str = DEFAULT_DSN) -> bool:
 
 def authenticate(username: str, password: str, dsn: str = DEFAULT_DSN,
                  ip: str = "") -> Optional[dict]:
-    """校验用户名密码，成功返回 {id,name,role,token,must_change}。
+    """校验用户名密码，成功返回 {id,name,roles,token,must_change}。
 
     失败时记录限流计数；锁定期间直接拒绝。
     """
@@ -183,39 +227,48 @@ def authenticate(username: str, password: str, dsn: str = DEFAULT_DSN,
         return {"locked": True}
     with psycopg.connect(dsn) as conn, conn.cursor() as cur:
         cur.execute("""
-            SELECT id, name, role, password_hash, must_change_password
-            FROM users WHERE id=%s
+            SELECT id, display_name, password_hash, must_change_password, enabled
+            FROM system_account WHERE username=%s
         """, (username,))
         row = cur.fetchone()
-    if not row or not verify_password(password, row[3]):
+        cur.execute("""
+            SELECT r.code FROM system_role r
+            JOIN system_account_role ar ON ar.role_id = r.id
+            WHERE ar.account_id=%s
+        """, (row[0],)) if row else None
+        roles = [x[0] for x in cur.fetchall()] if row else []
+    if not row or not verify_password(password, row[2]):
         n = _record_failure(username, ip)
         return None if n < LOGIN_MAX_ATTEMPTS else {"locked": True}
+    if not row[4]:
+        return {"disabled": True}
     _clear_failures(username, ip)
     token = create_session(row[0], dsn)
-    return {"id": row[0], "name": row[1], "role": row[2], "token": token,
-            "must_change": row[4]}
+    return {"id": row[0], "username": username, "name": row[1],
+            "roles": roles, "token": token, "must_change": row[3]}
 
 
-def set_password(user_id: str, new_password: str, dsn: str = DEFAULT_DSN) -> None:
-    """修改密码并清除强制改密标志；返回前调用方应注销该用户其他会话。"""
+def set_password(account_id: int, new_password: str,
+                 dsn: str = DEFAULT_DSN) -> None:
+    """修改密码并清除强制改密标志；返回前调用方应注销该账户其他会话。"""
     if len(new_password) < 8:
         raise ValueError("密码长度至少 8 位")
     with psycopg.connect(dsn) as conn, conn.cursor() as cur:
         cur.execute("""
-            UPDATE users SET password_hash=%s, must_change_password=false
+            UPDATE system_account SET password_hash=%s, must_change_password=false
             WHERE id=%s
-        """, (hash_password(new_password), user_id))
+        """, (hash_password(new_password), account_id))
         conn.commit()
 
 
-def revoke_sessions(user_id: str, keep_token: str | None = None,
+def revoke_sessions(account_id: int, keep_token: str | None = None,
                     dsn: str = DEFAULT_DSN) -> None:
-    """注销用户全部会话（可保留当前 token，如改密后保持本会话）。"""
+    """注销账户全部会话（可保留当前 token，如改密后保持本会话）。"""
     keep_hash = _session_fingerprint(keep_token) if keep_token else None
     with psycopg.connect(dsn) as conn, conn.cursor() as cur:
         if keep_hash:
-            cur.execute("DELETE FROM sessions WHERE user_id=%s AND token<>%s",
-                        (user_id, keep_hash))
+            cur.execute("DELETE FROM sessions WHERE account_id=%s AND token<>%s",
+                        (account_id, keep_hash))
         else:
-            cur.execute("DELETE FROM sessions WHERE user_id=%s", (user_id,))
+            cur.execute("DELETE FROM sessions WHERE account_id=%s", (account_id,))
         conn.commit()
