@@ -1440,27 +1440,16 @@ function togglePage(cb){
 function syncTreeState(cb){
   const blk = cb.closest('.perm-block');
   if(!blk) return;
-  // 1) 更新所在页面级父 checkbox：页面内三级全部勾选才勾选页面
-  const pg = cb.closest('.perm-page');
-  if(pg){
-    const pageCb = pg.querySelector('.perm-page-cb');
-    const pcbs = pg.querySelectorAll('.perm-cb');
-    if(pageCb) pageCb.checked = pcbs.length>0 && [...pcbs].every(c=>c.checked);
-  }
-  // 2) 更新模块级父 checkbox：全部页面全选才勾选模块
+  // 1) 全量同步页面级父 checkbox：页面内功能全选才勾选页面
+  blk.querySelectorAll('.perm-page').forEach(p=>{
+    const pageCb = p.querySelector('.perm-page-cb');
+    const pcbs = p.querySelectorAll('.perm-cb');
+    if(pageCb && pcbs.length) pageCb.checked = [...pcbs].every(c=>c.checked);
+  });
+  // 2) 同步模块级父 checkbox：模块内全部功能全选才勾选模块
   const modCb = blk.querySelector('.perm-mod-cb');
   const allCbs = blk.querySelectorAll('.perm-cb');
-  if(modCb) modCb.checked = allCbs.length>0 && [...allCbs].every(c=>c.checked);
-  // 3) 模块未全选时，未全选的页面父级取消勾选（避免残留打钩）
-  if(modCb && !modCb.checked){
-    blk.querySelectorAll('.perm-page').forEach(p=>{
-      const pageCb = p.querySelector('.perm-page-cb');
-      const pcbs = p.querySelectorAll('.perm-cb');
-      if(pageCb && pcbs.length && ![...pcbs].every(c=>c.checked)){
-        pageCb.checked = false;
-      }
-    });
-  }
+  if(modCb && allCbs.length) modCb.checked = [...allCbs].every(c=>c.checked);
 }
 function escAttr(s){ return esc(s).replace(/"/g,'&quot;'); }
 async function saveRolePerms(roleId){
