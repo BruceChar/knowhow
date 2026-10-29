@@ -1483,7 +1483,9 @@ async function loadAccounts(){
         <td>${a.must_change?'<span class="tag tag-red">是</span>':'否'}</td>
         <td>
           <button class="btn btn-sm" onclick="resetAccountPassword(${a.id})">重置密码</button>
-          <button class="btn btn-sm" onclick="toggleAccountEnabled(${a.id}, ${!a.enabled})">${a.enabled?'停用':'启用'}</button>
+          ${a.username==='admin'
+            ? '<button class="btn btn-sm" disabled title="系统内置管理员不可停用">停用</button>'
+            : `<button class="btn btn-sm" onclick="toggleAccountEnabled(${a.id}, ${!a.enabled})">${a.enabled?'停用':'启用'}</button>`}
         </td>
       </tr>`).join('') || '<tr><td colspan="6" style="color:var(--muted);text-align:center;">无账户</td></tr>';
   } catch(e){

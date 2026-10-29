@@ -1182,10 +1182,13 @@ def change_account_roles(account_id: int, body: AccountRolesUpdate,
 @app.put("/accounts/{account_id}/enabled")
 def set_account_enabled_api(account_id: int, body: dict,
                             user: User = Depends(require_permission("account.manage"))):
-    """启用/停用账户；停用同时注销其会话。"""
+    """启用/停用账户；停用同时注销其会话。内置管理员不可停用。"""
     from src.auth import rbac
     enabled = bool(body.get("enabled", True))
-    rbac.set_account_enabled(account_id, enabled, DSN)
+    try:
+        rbac.set_account_enabled(account_id, enabled, DSN)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
     return {"ok": True}
 
 

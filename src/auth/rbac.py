@@ -196,6 +196,30 @@ def update_account_roles(account_id: int, role_codes: list[str],
 def set_account_enabled(account_id: int, enabled: bool,
                         dsn: str = RAG_DSN) -> None:
     with psycopg.connect(dsn) as conn, conn.cursor() as cur:
+        if not enabled:
+            cur.execute("""
+                SELECT a.username, bool_or(rp.permission_code='account.manage')
+                FROM system_account a
+                LEFT JOIN system_account_role ar ON ar.account_id=a.id
+                LEFT JOIN system_role_permission rp ON rp.role_id=ar.role_id
+                WHERE a.id=%s GROUP BY a.username
+            """, (account_id,))
+            row = cur.fetchone()
+            username, is_admin = (row[0], row[1]) if row else (None, False)
+            # 1) 内置管理员（admin 账户）不可停用
+            if username == "admin":
+                raise ValueError("系统内置管理员不可停用")
+            # 2) 兜底：停用后必须仍存在启用的管理员（拥有 account.manage 权限）
+            if is_admin:
+                cur.execute("""
+                    SELECT 1 FROM system_account a
+                    JOIN system_account_role ar ON ar.account_id=a.id
+                    JOIN system_role_permission rp ON rp.role_id=ar.role_id
+                    WHERE a.enabled AND rp.permission_code='account.manage'
+                      AND a.id<>%s LIMIT 1
+                """, (account_id,))
+                if not cur.fetchone():
+                    raise ValueError("至少需保留一个启用的管理员账户，不可停用")
         cur.execute("UPDATE system_account SET enabled=%s WHERE id=%s",
                     (enabled, account_id))
         if not enabled:
@@ -280,6 +304,10 @@ def delete_role(role_id: int, dsn: str = RAG_DSN) -> None:
             raise ValueError("角色不存在")
         if row[0]:
             raise ValueError("内置角色不可删除")
+        cur.execute("DELETE FROM system_role_permission WHERE role_id=%s",
+                    (role_id,))
+        cur.execute("DELETE FROM system_account_role WHERE role_id=%s",
+                    (role_id,))
         cur.execute("DELETE FROM system_role WHERE id=%s", (role_id,))
         conn.commit()
 
