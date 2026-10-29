@@ -1257,6 +1257,8 @@ async function loadRoles(){
         <td>${r.builtin?'<span class="tag tag-red">内置</span>':'<span class="tag">自建</span>'}</td>
         <td>
           <button class="btn btn-sm" onclick="showRolePermModal(${r.id})">分配权限</button>
+          <button class="btn btn-sm" onclick="copyRole(${r.id})">复制</button>
+          ${r.builtin?'':'<button class="btn btn-sm" onclick="renameRole('+r.id+')">重命名</button>'}
           ${r.builtin?'':'<button class="btn btn-sm" onclick="delRole('+r.id+')">删除</button>'}
         </td>
       </tr>`).join('') || '<tr><td colspan="6" style="color:var(--muted);text-align:center;">无角色</td></tr>';
@@ -1292,6 +1294,79 @@ async function delRole(id){
     showMsg('角色已删除', true);
     loadRoles();
   } catch(e){ showMsg('删除失败：'+e.message, false); }
+}
+
+// 复制角色：以某角色为模板派生新角色（继承权限点），再单独编辑/重命名
+function copyRole(srcId){
+  const src = ROLE_CACHE.find(r=>r.id===srcId);
+  if(!src) return;
+  openModal(`复制角色 · ${esc(src.name)}`, `
+    <p style="font-size:13px;color:var(--muted);margin-bottom:10px;">
+      以「${esc(src.name)}」为模板派生新角色，继承其 ${(src.permissions||[]).length} 个权限点；创建后可再编辑权限树或重命名。</p>
+    <label style="display:block;font-size:12px;color:var(--muted);">角色编码（唯一，不可改）</label>
+    <input id="cr-code" class="select" style="width:100%;margin-bottom:10px;" placeholder="${esc(src.code)}_v2">
+    <label style="display:block;font-size:12px;color:var(--muted);">角色名称</label>
+    <input id="cr-name" class="select" style="width:100%;margin-bottom:10px;" value="${esc(src.name)}1">
+    <label style="display:block;font-size:12px;color:var(--muted);">说明（可选）</label>
+    <input id="cr-desc" class="select" style="width:100%;margin-bottom:10px;" value="${esc(src.description||'')}">
+    <label style="display:block;font-size:12px;color:var(--muted);">数据范围</label>
+    <select id="cr-scope" class="select" style="width:100%;margin-bottom:10px;">
+      <option value="full" ${src.data_scope==='full'?'selected':''}>全部数据（含保密）</option>
+      <option value="standard" ${src.data_scope==='standard'?'selected':''}>仅 public + internal</option>
+    </select>
+    <div style="text-align:right;">
+      <button class="btn" onclick="doCopyRole(${srcId})">创建派生角色</button>
+      <button class="btn btn-sm" onclick="closeModal()">取消</button>
+    </div>`);
+}
+async function doCopyRole(srcId){
+  const src = ROLE_CACHE.find(r=>r.id===srcId);
+  const code = document.getElementById('cr-code').value.trim();
+  const name = document.getElementById('cr-name').value.trim();
+  const desc = document.getElementById('cr-desc').value.trim();
+  const scope = document.getElementById('cr-scope').value;
+  if(!code || !name){ showMsg('请填写角色编码和名称', false); return; }
+  if(!/^[a-z][a-z0-9_]*$/.test(code)){ showMsg('角色编码需小写字母开头，仅 a-z/0-9/_', false); return; }
+  try {
+    const d = await api('/roles', {method:'POST', body: JSON.stringify({
+      code, name, description:desc, data_scope:scope, permissions: src.permissions||[]
+    })});
+    closeModal();
+    showMsg(`派生角色「${d.role.name}」已创建（继承 ${(src.permissions||[]).length} 个权限点），可再分配权限或重命名`, true);
+    loadRoles();
+  } catch(e){ showMsg('创建派生角色失败：'+e.message, false); }
+}
+
+// 重命名角色（名称/说明/数据范围；code 不变）
+function renameRole(id){
+  const r = ROLE_CACHE.find(x=>x.id===id);
+  if(!r) return;
+  openModal(`重命名角色 · ${esc(r.name)}`, `
+    <label style="display:block;font-size:12px;color:var(--muted);">角色名称</label>
+    <input id="rn-name" class="select" style="width:100%;margin-bottom:10px;" value="${esc(r.name)}">
+    <label style="display:block;font-size:12px;color:var(--muted);">说明</label>
+    <input id="rn-desc" class="select" style="width:100%;margin-bottom:10px;" value="${esc(r.description||'')}">
+    <label style="display:block;font-size:12px;color:var(--muted);">数据范围</label>
+    <select id="rn-scope" class="select" style="width:100%;margin-bottom:10px;">
+      <option value="full" ${r.data_scope==='full'?'selected':''}>全部数据（含保密）</option>
+      <option value="standard" ${r.data_scope==='standard'?'selected':''}>仅 public + internal</option>
+    </select>
+    <div style="text-align:right;">
+      <button class="btn" onclick="doRenameRole(${id})">保存</button>
+      <button class="btn btn-sm" onclick="closeModal()">取消</button>
+    </div>`);
+}
+async function doRenameRole(id){
+  const name = document.getElementById('rn-name').value.trim();
+  const desc = document.getElementById('rn-desc').value.trim();
+  const scope = document.getElementById('rn-scope').value;
+  if(!name){ showMsg('角色名称不能为空', false); return; }
+  try {
+    const d = await api('/roles/'+id, {method:'PUT', body: JSON.stringify({name, description:desc, data_scope:scope})});
+    closeModal();
+    showMsg(`角色已重命名为「${d.role.name}」`, true);
+    loadRoles();
+  } catch(e){ showMsg('重命名失败：'+e.message, false); }
 }
 
 // 权限树：模块 → 页面 → 功能 三级勾选
@@ -1364,16 +1439,27 @@ function togglePage(cb){
 }
 function syncTreeState(cb){
   const blk = cb.closest('.perm-block');
-  if(blk){
-    const modCb = blk.querySelector('.perm-mod-cb');
-    const allCbs = blk.querySelectorAll('.perm-cb');
-    if(modCb) modCb.checked = allCbs.length>0 && [...allCbs].every(c=>c.checked);
-    const pg = cb.closest('.perm-page');
-    if(pg){
-      const pageCb = pg.querySelector('.perm-page-cb');
-      const pcbs = pg.querySelectorAll('.perm-cb');
-      if(pageCb) pageCb.checked = pcbs.length>0 && [...pcbs].every(c=>c.checked);
-    }
+  if(!blk) return;
+  // 1) 更新所在页面级父 checkbox：页面内三级全部勾选才勾选页面
+  const pg = cb.closest('.perm-page');
+  if(pg){
+    const pageCb = pg.querySelector('.perm-page-cb');
+    const pcbs = pg.querySelectorAll('.perm-cb');
+    if(pageCb) pageCb.checked = pcbs.length>0 && [...pcbs].every(c=>c.checked);
+  }
+  // 2) 更新模块级父 checkbox：全部页面全选才勾选模块
+  const modCb = blk.querySelector('.perm-mod-cb');
+  const allCbs = blk.querySelectorAll('.perm-cb');
+  if(modCb) modCb.checked = allCbs.length>0 && [...allCbs].every(c=>c.checked);
+  // 3) 模块未全选时，未全选的页面父级取消勾选（避免残留打钩）
+  if(modCb && !modCb.checked){
+    blk.querySelectorAll('.perm-page').forEach(p=>{
+      const pageCb = p.querySelector('.perm-page-cb');
+      const pcbs = p.querySelectorAll('.perm-cb');
+      if(pageCb && pcbs.length && ![...pcbs].every(c=>c.checked)){
+        pageCb.checked = false;
+      }
+    });
   }
 }
 function escAttr(s){ return esc(s).replace(/"/g,'&quot;'); }

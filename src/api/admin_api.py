@@ -1106,6 +1106,36 @@ def update_role_permissions_api(
     return {"ok": True, "role": r}
 
 
+class RoleMetaUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    data_scope: str | None = None
+
+
+@app.put("/roles/{role_id}")
+def update_role_meta_api(role_id: int, body: RoleMetaUpdate,
+                         user: User = Depends(require_permission("role.manage"))):
+    """角色元信息更新（重命名/说明/数据范围；code 不可变）。"""
+    from src.auth import rbac
+    with psycopg.connect(DSN) as conn, conn.cursor() as cur:
+        cur.execute("SELECT id FROM system_role WHERE id=%s", (role_id,))
+        if not cur.fetchone():
+            raise HTTPException(404, "角色不存在")
+        fields, params = [], []
+        if body.name is not None:
+            fields.append("name=%s"); params.append(body.name)
+        if body.description is not None:
+            fields.append("description=%s"); params.append(body.description)
+        if body.data_scope in ("full", "standard"):
+            fields.append("data_scope=%s"); params.append(body.data_scope)
+        if fields:
+            cur.execute(f"UPDATE system_role SET {', '.join(fields)} WHERE id=%s",
+                        (*params, role_id))
+            conn.commit()
+    r = next(rr for rr in rbac.list_roles(DSN) if rr["id"] == role_id)
+    return {"ok": True, "role": r}
+
+
 @app.delete("/roles/{role_id}")
 def delete_role_api(role_id: int,
                     user: User = Depends(require_permission("role.manage"))):
