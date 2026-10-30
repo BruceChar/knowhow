@@ -618,6 +618,8 @@ def login(body: LoginBody, request: Request):
         raise HTTPException(401, "用户名或密码错误")
     if info.get("locked"):
         raise HTTPException(429, f"失败次数过多，已锁定 {LOGIN_LOCK_MINUTES} 分钟")
+    if info.get("disabled"):
+        raise HTTPException(403, "账户已停用，请联系管理员")
     resp = JSONResponse({"ok": True,
                          "user": {"id": info["id"], "username": info.get("username", ""),
                                   "name": info["name"], "roles": info.get("roles", [])},

@@ -20,7 +20,8 @@ SENSITIVE_FIELDS = [
 
 DYNAMIC_FACT_TERMS = (
     "价格", "多少钱", "报价", "moq", "起订量", "交期", "库存", "现货",
-    "price", "quote", "lead time", "inventory", "stock",
+    "price", "quote", "lead time", "delivery", "shipping",
+    "inventory", "stock",
 )
 
 def decide(question: str, cards: list[dict], context: dict = None) -> dict:

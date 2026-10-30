@@ -10,6 +10,12 @@ class GateTests(unittest.TestCase):
 
     def test_no_evidence_escalates_instead_of_blocking_as_policy_violation(self):
         result = decide("What is the delivery time?", [])
+        # 交期属于动态事实（delivery 命中词表）→ 需工具核验而非转人工
+        self.assertEqual(result["level"], "B")
+        self.assertTrue(result["need_tool"])
+
+    def test_unrelated_question_without_evidence_goes_to_human(self):
+        result = decide("How do I open a new branch office?", [])
         self.assertEqual(result["level"], "C")
         self.assertIn("转人工", result["reason"])
 

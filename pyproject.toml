@@ -30,3 +30,15 @@ packages = ["src"]
 [[tool.uv.index]]
 url = "https://mirrors.aliyun.com/pypi/simple/"
 default = true
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "integration: 依赖 8000 服务在线的 API 冒烟测试（服务不可达时自动 skip）",
+]
+addopts = "-m 'not integration'"
