@@ -24,6 +24,9 @@ dependencies = [
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[project.scripts]
+knowhow = "src.main:run"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src"]
 

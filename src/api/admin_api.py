@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import json
 import os
+import socket
 from datetime import datetime, timezone
+from typing import Literal
 from urllib.parse import urlparse
 
 import psycopg
@@ -62,6 +64,41 @@ def customer_service_agent():
     """客服辅助入口；与后台共用认证和数据权限。"""
     from fastapi.responses import FileResponse
     return FileResponse(str(_static_dir / "admin.html"))
+
+
+def _lan_ip() -> str:
+    """探测本机局域网 IP（UDP 连公网地址取本机出口地址，不实际发包）。"""
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("8.8.8.8", 80))
+        return s.getsockname()[0]
+    except Exception:
+        pass
+    finally:
+        s.close()
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            ip = info[4][0]
+            if ip.startswith(("10.", "172.", "192.168.")):
+                return ip
+    except Exception:
+        pass
+    return "127.0.0.1"
+
+
+@app.get("/api/v1/network", include_in_schema=False)
+def network_info(request: Request):
+    """返回局域网访问地址，供页面展示分享链接。"""
+    port = request.url.port or 8000
+    ip = _lan_ip()
+    base = f"http://{ip}:{port}"
+    return {
+        "ip": ip,
+        "port": port,
+        "base_url": base,
+        "agent_url": f"{base}/agent",
+        "admin_url": f"{base}/admin",
+    }
 
 # 模型预热：服务启动时加载 embedding 模型，评测/检索复用，避免每次冷启动 9s+
 _embedding_provider = None

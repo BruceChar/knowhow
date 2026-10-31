@@ -33,12 +33,19 @@
    uv run python scripts/migrate.py
    ```
 
-5. 启动服务：
+5. 启动服务（二选一）：
 
    ```bash
-   HF_HUB_OFFLINE=1 uv run python -m uvicorn \
-     src.api.admin_api:app --host 0.0.0.0 --port 8000
+   # 方式一：项目脚本入口（推荐）
+   HF_HUB_OFFLINE=1 uv run app/index
+
+   # 方式二：等价命令 / 已注册的 console 入口
+   uv run knowhow
    ```
+
+   默认监听 `0.0.0.0:8000`（局域网可访问），可用环境变量 `APP_HOST` / `APP_PORT`
+   覆盖端口。页面顶栏会自动显示当前机器的局域网访问地址（如
+   `http://192.168.31.49:8000/agent`），可一键复制分享给同局域网的其他业务员。
 
 6. 打开 `http://localhost:8000/agent` 进入客服辅助，或打开
    `http://localhost:8000/admin` 进入知识治理后台。

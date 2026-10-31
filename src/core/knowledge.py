@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 import psycopg
 
-from src.auth.rbac import DATA_PERMISSION_VISIBLE, User
+from src.auth.rbac import DATA_SCOPE_FULL, User
 from src.core import gate, generate, search
 from src.tools.facts import FactResult, FactTool, OfferFactTool
 
@@ -62,7 +62,9 @@ def ask_question(
 ) -> AskResponse:
     started = time.time()
     inquiry_id = uuid.uuid4().hex[:16]
-    permissions = DATA_PERMISSION_VISIBLE.get(user.role, ["public"])
+    permissions = (["public", "internal", "confidential"]
+                   if user.data_scope == DATA_SCOPE_FULL
+                   else ["public", "internal"])
     cards = search.hybrid_search(
         conn,
         question,

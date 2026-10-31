@@ -152,6 +152,14 @@
       </div>
     </header>
 
+    <!-- 局域网分享地址栏：方便复制给同局域网的其他业务员 -->
+    <div id="lan-banner" style="display:none;align-items:center;gap:8px;background:#eef6ff;border-bottom:1px solid #dbeafe;padding:8px 20px;font-size:13px;color:#1e40af;flex-wrap:wrap;">
+      <span style="font-weight:600;">局域网访问地址：</span>
+      <b id="lan-url" style="word-break:break-all;"></b>
+      <button class="btn btn-sm" onclick="copyLanUrl()" style="border-color:#2563eb;color:#2563eb;">复制</button>
+      <span id="lan-note" style="color:#64748b;font-size:12px;">同局域网内的其他电脑可直接用此地址访问，发给其他业务员即可</span>
+    </div>
+
     <main class="content">
       <div class="msg" id="msg"></div>
 
@@ -519,6 +527,37 @@ async function logout(){
   CURRENT_USER = ''; CURRENT_ROLE = ''; CURRENT_ROLES = []; CURRENT_PERMS = [];
   showLogin();
 }
+
+// 局域网分享地址：探测本机 IP 并展示可复制链接（方便发给同局域网业务员）
+let LAN_BANNER = null;
+async function loadLanInfo(){
+  const banner = document.getElementById('lan-banner');
+  if(!banner) return;
+  try {
+    const r = await fetch(API + '/api/v1/network');
+    if(!r.ok) return;
+    const info = await r.json();
+    const urlEl = document.getElementById('lan-url');
+    urlEl.textContent = info.agent_url;
+    LAN_BANNER = info.agent_url;
+    banner.style.display = 'flex';
+  } catch(e){ /* 内网环境探测失败时不展示，不影响使用 */ }
+}
+function copyLanUrl(){
+  const url = LAN_BANNER || (document.getElementById('lan-url')||{}).textContent || '';
+  const done = ()=>{ const btn = document.querySelector('#lan-banner button'); if(btn){ btn.textContent='已复制'; setTimeout(()=>btn.textContent='复制', 1500); } };
+  if(navigator.clipboard && window.isSecureContext){
+    navigator.clipboard.writeText(url).then(done).catch(()=>fallbackCopy(url, done));
+  } else { fallbackCopy(url, done); }
+}
+function fallbackCopy(text, done){
+  const ta = document.createElement('textarea');
+  ta.value = text; ta.style.position='fixed'; ta.style.opacity='0';
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); done(); } catch(e){}
+  document.body.removeChild(ta);
+}
+loadLanInfo();
 
 // 修改密码模态（顶栏入口 + 首次登录/重置后强制改密共用）
 function showChangePassword(){
