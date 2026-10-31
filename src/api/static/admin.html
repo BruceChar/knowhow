@@ -129,6 +129,8 @@
         <span class="m-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 21h20z"/><path d="M12 10v4M12 17.5v.5"/></svg></span>红线案例</div>
       <div class="menu-item" data-page="qa" onclick="showPage('qa')">
         <span class="m-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-8 8H4l2-3a8 8 0 1 1 15-5z"/><path d="M8.5 11h.5M12 11h.5M15.5 11h.5"/></svg></span>问答审计日志</div>
+      <div class="menu-item" data-page="feedback" onclick="showPage('feedback')">
+        <span class="m-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/></svg></span>反馈闭环</div>
 
       <div class="menu-group">系统管理</div>
       <div class="menu-item" data-page="sys" onclick="showPage('sys')">
@@ -209,6 +211,41 @@
           </div>
         </div>
         <div id="agent-result"></div>
+      </section>
+
+      <!-- ===== 页面：客服反馈闭环 ===== -->
+      <section class="page" id="page-feedback">
+        <div class="kpis">
+          <div class="kpi"><div class="v" id="fb-total">—</div><div class="l">反馈总数</div></div>
+          <div class="kpi"><div class="v ok" id="fb-correct">—</div><div class="l">回答正确</div></div>
+          <div class="kpi"><div class="v bad" id="fb-incorrect">—</div><div class="l">需要修正</div></div>
+          <div class="kpi"><div class="v warn" id="fb-open">—</div><div class="l">待处理问题</div></div>
+          <div class="kpi"><div class="v ok" id="fb-applied">—</div><div class="l">已反哺知识</div></div>
+          <div class="kpi"><div class="v" id="fb-rate">—</div><div class="l">反馈覆盖率</div></div>
+        </div>
+        <div class="card">
+          <h3>反馈回执与知识回流</h3>
+          <div class="toolbar">
+            <select class="select" id="fb-status" onchange="loadFeedbackCenter()">
+              <option value="">全部处理状态</option>
+              <option value="open">待处理</option>
+              <option value="resolved">已采纳</option>
+              <option value="rejected">未采纳</option>
+            </select>
+            <select class="select" id="fb-verdict" onchange="loadFeedbackCenter()">
+              <option value="">全部反馈</option>
+              <option value="correct">回答正确</option>
+              <option value="incorrect">需要修正</option>
+              <option value="needs_review">待复核</option>
+            </select>
+            <button class="btn btn-ghost" onclick="loadFeedbackCenter()">刷新</button>
+            <span style="font-size:12px;color:var(--muted);">采纳后生成待审核知识版本，发布仍需通过审核。</span>
+          </div>
+          <div style="overflow-x:auto;"><table id="feedback-table">
+            <thead><tr><th>反馈时间</th><th style="width:20%;">客户问题</th><th>反馈</th><th>处理状态</th><th style="width:28%;">处理结果</th><th>操作</th></tr></thead>
+            <tbody></tbody>
+          </table></div>
+        </div>
       </section>
 
       <!-- ===== 页面：知识卡管理 ===== -->
@@ -435,13 +472,13 @@ const ROLE_SCOPE = {
 const PAGE_TITLES = {
   agent:'客服辅助', ingest:'数据入录', faq:'知识卡管理', products:'产品与报价',
   trend:'评测总览', audit:'召回审计',
-  redline:'红线案例', qa:'问答审计日志', sys:'系统管理'
+  redline:'红线案例', qa:'问答审计日志', feedback:'反馈闭环', sys:'系统管理'
 };
 // 菜单可见性 → 所需权限点
 const PAGE_PERM = {
   ingest:'ingest.view', faq:'faq.view', products:'faq.view', trend:'eval.view',
   audit:'audit.view', redline:'redline.view', qa:'qalog.view', sys:'account.manage',
-  agent:'agent.use'
+  agent:'agent.use', feedback:'agent.feedback'
 };
 const STATUS_LABEL = {draft:'待审核', approved:'已通过', deprecated:'已驳回/下线'};
 
@@ -633,6 +670,7 @@ function showPage(name){
   if(name==='products'){ loadProducts(); loadOffers(); }
   if(name==='sys'){ loadRoles(); loadAccounts(); }
   if(name==='ingest'){ loadBatches(); loadMapping(); }
+  if(name==='feedback'){ loadFeedbackCenter(); }
   if(name==='trend' || name==='audit' || name==='redline' || name==='qa') initEvalViews();
 }
 
@@ -822,9 +860,12 @@ async function askAgent(){
         <div style="margin-top:14px;">${cards||'<span style="font-size:12px;color:var(--muted)">没有可引用的生产知识。</span>'}</div>
         <div class="toolbar" style="margin-top:12px;">
           ${d.answer ? `<button class="btn btn-ghost" onclick="copyAgentAnswer()">复制草稿</button>`:''}
-          <button class="btn btn-ghost" onclick="sendAgentFeedback('correct')">回答正确</button>
-          <button class="btn btn-ghost" onclick="sendAgentFeedback('incorrect')">需要修正</button>
+          ${hasPerm('agent.feedback') ? `
+            <button class="btn btn-ghost" id="fb-correct-btn" onclick="sendAgentFeedback('correct')">回答正确</button>
+            <button class="btn btn-ghost" id="fb-incorrect-btn" onclick="sendAgentFeedback('incorrect')">需要修正</button>` :
+            '<span style="font-size:12px;color:var(--warn)">当前角色无反馈权限</span>'}
         </div>
+        <div id="agent-feedback-receipt" style="margin-top:10px;"></div>
         <div style="font-size:11px;color:var(--muted);margin-top:6px;">审计编号 ${esc(d.inquiry_id)} · 模型 ${esc(d.model||'未调用')}</div>
       </div>`;
   } catch(e){ showMsg('问答失败：'+e.message, false); }
@@ -839,6 +880,8 @@ async function copyAgentAnswer(){
 
 async function sendAgentFeedback(verdict){
   if(!LAST_AGENT_RESULT) return;
+  if(LAST_AGENT_RESULT.feedback &&
+     !confirm('这条问答已有反馈，是否用本次判断覆盖？')) return;
   const reason = verdict==='correct' ? '客服确认可用' :
     (prompt('请简要说明问题或需修正的原因：') || '');
   const corrected = verdict==='incorrect' ?
@@ -851,8 +894,100 @@ async function sendAgentFeedback(verdict){
         verdict, reason, corrected_answer:corrected
       })
     });
-    showMsg(d.issue_id ? `反馈已进入待处理队列 #${d.issue_id}` : '反馈已记录', true);
+    LAST_AGENT_RESULT.feedback = d;
+    const receipt = document.getElementById('agent-feedback-receipt');
+    if(receipt) receipt.innerHTML = feedbackReceipt(d);
+    showMsg(d.result?.label || '反馈已记录', true);
+    if(document.getElementById('page-feedback').classList.contains('active')) {
+      loadFeedbackCenter();
+    }
   } catch(e){ showMsg('反馈失败：'+e.message, false); }
+}
+
+function feedbackReceipt(d){
+  const status = d.issue_status || '';
+  const cls = status==='resolved' ? 'tag-ok' : status==='open' ? 'tag-red' : 'tag-blue';
+  return `<div style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:12px;">
+    <span class="tag ${cls}">${esc(d.result?.label||'反馈已记录')}</span>
+    ${d.issue_id ? `<span style="margin-left:8px;">问题单 #${d.issue_id}</span>`:''}
+    ${d.faq_id ? `<span style="margin-left:8px;">知识卡 #${d.faq_id}${d.faq_version?' v'+d.faq_version:''}</span>`:''}
+    ${d.resolution ? `<div style="margin-top:6px;color:var(--muted);">结论：${esc(d.resolution)}</div>`:''}
+    <div style="margin-top:6px;"><a href="#" onclick="showPage('feedback');return false;" style="color:var(--blue)">查看全部反馈结果</a></div>
+  </div>`;
+}
+
+let FEEDBACK_ROWS = [];
+const FEEDBACK_LABELS = {correct:'回答正确', incorrect:'需要修正', needs_review:'待复核'};
+const FEEDBACK_STATUS_LABELS = {open:'待处理', resolved:'已采纳', rejected:'未采纳'};
+
+async function loadFeedbackCenter(){
+  const status = document.getElementById('fb-status')?.value || '';
+  const verdict = document.getElementById('fb-verdict')?.value || '';
+  const params = new URLSearchParams({limit:'200'});
+  if(status) params.set('status', status);
+  if(verdict) params.set('verdict', verdict);
+  try {
+    const [summary, rows] = await Promise.all([
+      api('/api/v1/feedback/summary'),
+      api('/api/v1/feedback?'+params.toString())
+    ]);
+    FEEDBACK_ROWS = rows;
+    document.getElementById('fb-total').textContent = summary.feedback_total;
+    document.getElementById('fb-correct').textContent = summary.correct;
+    document.getElementById('fb-incorrect').textContent = summary.incorrect;
+    document.getElementById('fb-open').textContent = summary.open_issues;
+    document.getElementById('fb-applied').textContent = summary.applied_issues;
+    document.getElementById('fb-rate').textContent = summary.feedback_rate+'%';
+    const tb = document.querySelector('#feedback-table tbody');
+    tb.innerHTML = rows.map((r, idx)=>{
+      const issue = r.issue;
+      const issueLabel = issue ? (FEEDBACK_STATUS_LABELS[issue.status]||issue.status) : '已记录';
+      const cls = issue?.status==='resolved' ? 'tag-ok' :
+        issue?.status==='open' ? 'tag-red' : 'tag-blue';
+      const canProcess = issue?.status==='open' && hasPerm('suggestion.review');
+      const result = r.result || {};
+      const detail = [
+        result.label || '反馈已记录',
+        r.reason ? `原因：${r.reason}` : '',
+        issue?.resolution ? `结论：${issue.resolution}` : ''
+      ].filter(Boolean).join('；');
+      return `<tr>
+        <td class="mono">${esc((r.feedback_at||'').slice(0,16).replace('T',' '))}</td>
+        <td>${esc(r.question||'-')}</td>
+        <td><span class="tag ${r.verdict==='correct'?'tag-ok':'tag-red'}">${esc(FEEDBACK_LABELS[r.verdict]||r.verdict)}</span></td>
+        <td><span class="tag ${cls}">${esc(issueLabel)}</span>${issue?`<div class="mono" style="margin-top:3px;">#${issue.id}</div>`:''}</td>
+        <td style="font-size:12px;">${esc(detail)}${issue?.faq_id?`<div style="margin-top:4px;color:var(--ok)">知识卡 #${issue.faq_id}${issue.faq_version?' v'+issue.faq_version:''}</div>`:''}</td>
+        <td>${canProcess ? `
+          <button class="btn" style="padding:3px 8px;font-size:12px;background:var(--ok);" onclick="resolveFeedback(${idx},'accept')">采纳修正</button>
+          <button class="btn btn-danger" style="padding:3px 8px;font-size:12px;" onclick="resolveFeedback(${idx},'reject')">不采纳</button>`:'-'}</td>
+      </tr>`;
+    }).join('') || '<tr><td colspan="6" style="color:var(--muted);text-align:center;">暂无反馈记录</td></tr>';
+  } catch(e){ showMsg('加载反馈结果失败：'+e.message, false); }
+}
+
+async function resolveFeedback(index, action){
+  const row = FEEDBACK_ROWS[index];
+  const issue = row?.issue;
+  if(!issue) return;
+  let suggested = '';
+  if(action==='accept'){
+    suggested = prompt('采纳后的知识答案（将生成待审核版本）：',
+      row.suggested_answer || row.answer || '') || '';
+    if(!suggested.trim()){ showMsg('采纳前必须填写建议答案', false); return; }
+  }
+  const resolution = prompt(
+    action==='accept' ? '处理结论（可选）：' : '不采纳原因：',
+    action==='accept' ? '已采纳反馈并生成待审核知识版本' : '审核后决定不修改现有知识'
+  );
+  if(resolution===null) return;
+  try {
+    const d = await api(`/api/v1/feedback/issues/${issue.id}/resolve`, {
+      method:'POST',
+      body:JSON.stringify({action, resolution, suggested_answer:suggested})
+    });
+    showMsg(d.result?.label || `反馈问题 #${issue.id} 已处理`, true);
+    await loadFeedbackCenter();
+  } catch(e){ showMsg('处理反馈失败：'+e.message, false); }
 }
 
 // ============ 产品事实与报价审核 ============

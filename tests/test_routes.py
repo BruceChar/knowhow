@@ -13,6 +13,8 @@ class RouteTests(unittest.TestCase):
             "/products",
             "/offers",
             "/api/v1/feedback",
+            "/api/v1/feedback/summary",
+            "/api/v1/feedback/issues/{issue_id}/resolve",
             "/api/v1/feedback/issues",
             "/api/v1/import/templates",
             "/api/v1/import/analyze",

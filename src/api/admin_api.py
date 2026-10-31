@@ -157,8 +157,14 @@ class AskBody(BaseModel):
 class FeedbackBody(BaseModel):
     inquiry_id: str
     verdict: str
-    reason: str = ""
-    corrected_answer: str = ""
+    reason: str = Field(default="", max_length=2000)
+    corrected_answer: str = Field(default="", max_length=10000)
+
+
+class FeedbackResolveBody(BaseModel):
+    action: Literal["accept", "reject"]
+    resolution: str = Field(default="", max_length=2000)
+    suggested_answer: str = Field(default="", max_length=10000)
 
 
 # ============ 知识问答（受认证、可见域和 customer_ready 约束） ============
@@ -184,52 +190,77 @@ def inquiry_compat(body: AskBody, user: User = Depends(get_current_user)):
 
 @app.post("/api/v1/feedback")
 def submit_feedback(body: FeedbackBody,
-                    user: User = Depends(require_permission("agent.use"))):
-    """Record operator judgement against one immutable Q&A audit record."""
-    if body.verdict not in {"correct", "incorrect", "needs_review"}:
+                    user: User = Depends(require_permission("agent.feedback"))):
+    """提交客服判断，并立即返回可追踪的处理结果。"""
+    from src.core.feedback import FEEDBACK_VERDICTS, submit_feedback as submit
+    if body.verdict not in FEEDBACK_VERDICTS:
         raise HTTPException(400, "verdict 必须是 correct/incorrect/needs_review")
-    with _conn() as conn, conn.cursor() as cur:
-        cur.execute("""
-            SELECT id, citations FROM audit_log
-            WHERE inquiry_id=%s
-        """, (body.inquiry_id,))
-        audit = cur.fetchone()
-        if not audit:
-            raise HTTPException(404, "问答记录不存在")
-        audit_id, citations = audit
-        feedback_text = json.dumps({
-            "verdict": body.verdict,
-            "reason": body.reason,
-            "by": user.name,
-        }, ensure_ascii=False)
-        cur.execute(
-            "UPDATE audit_log SET user_feedback=%s WHERE id=%s",
-            (feedback_text, audit_id),
+    if not body.inquiry_id.strip():
+        raise HTTPException(400, "inquiry_id 不能为空")
+    try:
+        with _conn() as conn:
+            return submit(
+                conn, user,
+                inquiry_id=body.inquiry_id.strip(),
+                verdict=body.verdict,
+                reason=body.reason.strip(),
+                corrected_answer=body.corrected_answer.strip(),
+            )
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
+@app.get("/api/v1/feedback")
+def feedback_history(
+    status: Literal["open", "resolved", "rejected"] | None = None,
+    verdict: Literal["correct", "incorrect", "needs_review"] | None = None,
+    limit: int = Query(default=100, ge=1, le=200),
+    user: User = Depends(require_permission("agent.feedback")),
+):
+    """查看反馈回执及处理结果；普通客服只能看到自己的记录。"""
+    from src.core.feedback import list_feedback
+    with _conn() as conn:
+        return list_feedback(
+            conn, user, status=status, verdict=verdict, limit=limit,
         )
-        issue_id = None
-        if body.verdict != "correct":
-            faq_id = None
-            if citations:
-                faq_id = int(citations[0]) if isinstance(citations, list) and citations else None
-            cur.execute("""
-                INSERT INTO issue
-                  (faq_id, inquiry_id, feedback, resolution, status,
-                   created_by, related_audit)
-                VALUES (%s,%s,%s,%s,'open',%s,%s)
-                RETURNING id
-            """, (
-                faq_id, body.inquiry_id, feedback_text,
-                body.corrected_answer, user.name, audit_id,
-            ))
-            issue_id = cur.fetchone()[0]
-        conn.commit()
-    return {"ok": True, "inquiry_id": body.inquiry_id,
-            "issue_id": issue_id, "verdict": body.verdict}
+
+
+@app.get("/api/v1/feedback/summary")
+def feedback_metrics(
+    user: User = Depends(require_permission("agent.feedback")),
+):
+    """反馈覆盖率、问题单状态与知识采纳指标。"""
+    from src.core.feedback import feedback_summary
+    with _conn() as conn:
+        return feedback_summary(conn, user)
+
+
+@app.post("/api/v1/feedback/issues/{issue_id}/resolve")
+def resolve_feedback(
+    issue_id: int,
+    body: FeedbackResolveBody,
+    user: User = Depends(require_permission("suggestion.review")),
+):
+    """采纳或拒绝反馈；采纳只生成待审核知识版本，不绕过发布门禁。"""
+    from src.core.feedback import resolve_feedback_issue
+    try:
+        with _conn() as conn:
+            return resolve_feedback_issue(
+                conn, user, issue_id=issue_id,
+                action=body.action, resolution=body.resolution.strip(),
+                suggested_answer=body.suggested_answer.strip(),
+            )
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(409, str(exc)) from exc
 
 
 @app.get("/api/v1/feedback/issues")
 def list_feedback_issues(status: str | None = "open",
-                         user: User = Depends(require_permission("audit.view"))):
+                         user: User = Depends(require_permission("suggestion.view"))):
     where, params = [], []
     if status:
         where.append("i.status=%s"); params.append(status)
