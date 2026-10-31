@@ -134,7 +134,29 @@ async function loadJoinInvite(token) {
   }
 }
 
+function resetWorkspaceState() {
+  Object.assign(state, {
+    user: null,
+    dashboard: null,
+    knowledge: [],
+    gaps: [],
+    team: [],
+    roles: [],
+    teams: [],
+    owners: [],
+    lastInteraction: null,
+  });
+  $("#question-input").value = "";
+  $("#final-answer")?.remove();
+  const answerPanel = $("#answer-panel");
+  answerPanel.className = "answer-panel empty-state";
+  answerPanel.innerHTML = "<p>生成后会在这里显示回复草稿、依据和可执行操作。</p>";
+  $("#modal-root").hidden = true;
+  $("#modal-root").innerHTML = "";
+}
+
 function showLogin() {
+  resetWorkspaceState();
   $("#setup-view").hidden = true;
   $("#app-view").hidden = true;
   $("#login-view").hidden = false;

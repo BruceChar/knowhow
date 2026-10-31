@@ -46,6 +46,8 @@ def test_frontend_assets_are_independent_and_use_custom_dialogs():
     assert "<style" not in html
     assert re.search(r"\b(alert|confirm|prompt)\s*\(", javascript) is None
     assert "function openDialog" in javascript
+    assert "function resetWorkspaceState" in javascript
+    assert "resetWorkspaceState();" in javascript
 
 
 def test_index_page_is_served():

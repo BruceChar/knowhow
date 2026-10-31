@@ -1,6 +1,7 @@
 """HNSW pgvector + Jieba lexical hybrid retrieval with weighted RRF."""
 from __future__ import annotations
 
+import os
 import re
 
 import jieba
@@ -14,9 +15,17 @@ from knowhow.services.embeddings import (
 )
 
 _WORD = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9._-]*|[\u3400-\u9fff]+")
+STOP_WORDS = {
+    "a", "about", "an", "and", "are", "at", "be", "by", "can", "do",
+    "does", "for", "from", "have", "how", "i", "in", "is", "it", "me",
+    "my", "of", "on", "or", "our", "please", "the", "this", "to", "us",
+    "we", "what", "when", "where", "which", "who", "why", "with", "you",
+    "your",
+}
 RRF_K = 60
 VECTOR_WEIGHT = 1.0
 LEXICAL_WEIGHT = 0.5
+VECTOR_MIN_SCORE = float(os.environ.get("KNOWHOW_VECTOR_MIN_SCORE", "0.35"))
 
 
 def tokens(text: str) -> set[str]:
@@ -26,7 +35,10 @@ def tokens(text: str) -> set[str]:
             result.update(word.strip() for word in jieba.cut(part) if word.strip())
         else:
             result.add(part)
-    return {word for word in result if len(word) > 1 or word.isdigit()}
+    return {
+        word for word in result
+        if (len(word) > 1 or word.isdigit()) and word not in STOP_WORDS
+    }
 
 
 def weighted_rrf(
@@ -56,6 +68,14 @@ def weighted_rrf(
     for row in ranked:
         row["rrf_score"] = round(scores[row["id"]], 8)
     return ranked[:limit]
+
+
+def filter_vector_candidates(rows: list[dict]) -> list[dict]:
+    """Drop nearest neighbors that are semantically unrelated to the query."""
+    return [
+        row for row in rows
+        if float(row.get("vector_score") or 0.0) >= VECTOR_MIN_SCORE
+    ]
 
 
 def _lexical_candidates(
@@ -148,7 +168,7 @@ def _vector_candidates(
                 vector, limit,
             ),
         )
-        return cur.fetchall()
+        return filter_vector_candidates(cur.fetchall())
 
 
 def retrieve_with_meta(
@@ -177,6 +197,7 @@ def retrieve_with_meta(
         "lexical_candidates": len(lexical),
         "embedding_model": model_name(),
         "embedding_error": embedding_error,
+        "vector_min_score": VECTOR_MIN_SCORE,
     }
 
 

@@ -6,7 +6,11 @@ from knowhow.domain import (
     language_mismatch,
 )
 from knowhow.access import ROLE_TEMPLATES, valid_permissions
-from knowhow.services.retrieval import weighted_rrf
+from knowhow.services.retrieval import (
+    filter_vector_candidates,
+    tokens,
+    weighted_rrf,
+)
 
 
 def test_detect_language_and_mismatch():
@@ -64,4 +68,18 @@ def test_weighted_rrf_merges_vector_and_lexical_results():
     assert [item["id"] for item in result][0] == 2
     assert set(result[0]["matched_by"]) == {"vector", "lexical"}
     assert all("rrf_score" in item for item in result)
+
+
+def test_unrelated_vector_neighbors_are_filtered():
+    rows = [
+        {"id": 1, "title": "relevant", "vector_score": 0.438},
+        {"id": 2, "title": "weak neighbor", "vector_score": 0.263},
+    ]
+    assert filter_vector_candidates(rows) == [rows[0]]
+
+
+def test_english_question_words_do_not_create_lexical_matches():
+    assert tokens("Do you offer leashes for large dogs?") == {
+        "offer", "leashes", "large", "dogs",
+    }
 
