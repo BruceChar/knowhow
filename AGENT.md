@@ -14,6 +14,8 @@
 - 不得修改已经执行过的数据库迁移文件；数据库变更新增 `db/migration_vN.sql`，
   并同步 `scripts/migrate.py`。
 - 反馈、权限和审计接口必须有回归测试；前端脚本修改后运行 `node --check`。
+- 前端交互不得使用浏览器原生 `alert`、`confirm`、`prompt`；统一使用
+  `customConfirm`、`customForm` 和自定义模态卡片。
 
 ## 每次更新的固定流程
 

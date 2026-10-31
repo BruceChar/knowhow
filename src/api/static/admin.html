@@ -81,6 +81,13 @@
   .modal-wrap { position:fixed; inset:0; background:rgba(15,23,42,.55); display:flex; align-items:center; justify-content:center; z-index:99; }
   .modal { background:#fff; border-radius:12px; padding:18px; max-width:760px; width:92%; max-height:84vh; overflow:auto; }
   .modal h3 { margin-bottom:10px; }
+  .dialog-message { font-size:13px; line-height:1.7; color:var(--muted); white-space:pre-wrap; margin-bottom:14px; }
+  .dialog-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:16px; }
+  .dialog-field { margin-bottom:12px; }
+  .dialog-field label { display:block; font-size:12px; color:var(--muted); margin-bottom:5px; }
+  .dialog-field input, .dialog-field textarea, .dialog-field select { width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:6px; font-size:14px; font-family:inherit; background:#fff; color:var(--text); }
+  .dialog-field textarea { min-height:100px; resize:vertical; font-size:13px; }
+  .dialog-error { display:none; padding:8px 10px; margin-top:10px; border-radius:6px; background:#fef2f2; color:var(--bad); font-size:12px; }
   .form-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:10px 0; }
   .form-grid label { font-size:12px; color:var(--muted); display:block; margin-bottom:4px; }
   .form-grid .full { grid-column:1 / -1; }
@@ -881,19 +888,33 @@ async function copyAgentAnswer(){
 async function sendAgentFeedback(verdict){
   if(!LAST_AGENT_RESULT) return;
   if(LAST_AGENT_RESULT.feedback &&
-     !confirm('这条问答已有反馈，是否用本次判断覆盖？')) return;
+     !(await customConfirm(
+       '覆盖已有反馈',
+       '这条问答已经有反馈记录。是否用本次判断覆盖最近的反馈结果？',
+       {confirmText:'覆盖反馈'}
+     ))) return;
   let feedbackType = 'judgement';
   let reason = '客服确认可用';
   let corrected = '';
   if(verdict!=='correct'){
-    const reasonInput = prompt('修改原因或改进建议：',
-      '回答不符合客户问题，需要补充正确内容或调整回答方式。');
-    if(reasonInput===null) return;
-    reason = reasonInput.trim() || '需要修正';
-    const answerInput = prompt(
-      '如已有可直接复用的标准答案，请填写；留空则作为改进建议提交：', '');
-    if(answerInput===null) return;
-    corrected = answerInput.trim();
+    const form = await customForm({
+      title:'提交反馈 · 需要修正',
+      description:`客户问题：${LAST_AGENT_RESULT.question||''}\n当前草稿：${LAST_AGENT_RESULT.answer||'无回答'}`,
+      fields:[
+        {
+          name:'reason', label:'修改原因或改进建议', type:'textarea', required:true,
+          value:'回答不符合客户问题，需要补充正确内容或调整回答方式。'
+        },
+        {
+          name:'corrected_answer', label:'可复用标准答案（可选）', type:'textarea',
+          placeholder:'有明确答案时填写；留空则作为改进建议提交'
+        }
+      ],
+      submitText:'提交反馈'
+    });
+    if(!form) return;
+    reason = form.reason;
+    corrected = form.corrected_answer;
     feedbackType = corrected ? 'standard_answer' : 'improvement_suggestion';
   }
   try {
@@ -991,11 +1012,19 @@ async function resolveFeedback(index, action){
   const issue = row?.issue;
   if(!issue) return;
   if(action==='reject'){
-    const resolution = prompt('不采纳原因：', '审核后决定不修改现有知识');
-    if(resolution===null) return;
+    const form = await customForm({
+      title:'不采纳反馈',
+      description:`客户问题：${row.question||'-'}\n反馈内容：${row.reason||'无补充说明'}`,
+      fields:[{
+        name:'resolution', label:'不采纳原因', type:'textarea', required:true,
+        value:'审核后决定不修改现有知识'
+      }],
+      submitText:'确认不采纳', danger:true
+    });
+    if(!form) return;
     try {
       const d = await api(`/api/v1/feedback/issues/${issue.id}/resolve`, {
-        method:'POST', body:JSON.stringify({action:'reject', resolution})
+        method:'POST', body:JSON.stringify({action:'reject', resolution:form.resolution})
       });
       showMsg(d.result?.label || `反馈问题 #${issue.id} 已处理`, true);
       await loadFeedbackCenter();
@@ -1366,9 +1395,26 @@ async function executeImport(){
 }
 
 async function saveMappingTemplate(){
-  const key = prompt('模板标识（英文、数字、下划线），例如 acme_products_v1：');
-  if(!key) return;
-  const description = prompt('模板说明：') || '';
+  const form = await customForm({
+    title:'另存为导入模板',
+    description:'保存当前字段映射，供后续同类文件直接复用。',
+    fields:[
+      {
+        name:'key', label:'模板标识', required:true,
+        placeholder:'例如 acme_products_v1',
+        pattern:'^[a-zA-Z][a-zA-Z0-9_]*$',
+        error:'模板标识需以字母开头，仅支持字母、数字和下划线'
+      },
+      {
+        name:'description', label:'模板说明', type:'textarea',
+        placeholder:'说明适用文件、业务场景或特殊规则'
+      }
+    ],
+    submitText:'保存模板'
+  });
+  if(!form) return;
+  const key = form.key;
+  const description = form.description;
   const sourceKey = document.getElementById('ingest-config').value;
   const sourceTemplate = (TEMPLATES[sourceKey]||{}).config || {};
   const fields = _compiledFields().map(f=>({
@@ -1555,7 +1601,12 @@ async function createRole(){
   } catch(e){ showMsg('创建角色失败：'+e.message, false); }
 }
 async function delRole(id){
-  if(!confirm('确认删除该角色？绑定该角色的账户将失去相关权限。')) return;
+  const confirmed = await customConfirm(
+    '删除角色',
+    '确认删除该角色？绑定该角色的账户将失去相关权限。',
+    {confirmText:'删除角色', danger:true}
+  );
+  if(!confirmed) return;
   try {
     await api('/roles/'+id, {method:'DELETE'});
     showMsg('角色已删除', true);
@@ -1819,19 +1870,138 @@ async function doResetPassword(accountId){
 }
 
 // ============ 模态 ============
-function openModal(title, bodyHtml){
+let MODAL_DISMISS_HANDLER = null;
+let ACTIVE_DIALOG_RESOLVER = null;
+
+function openModal(title, bodyHtml, onDismiss=null){
   const old = document.getElementById('dyn-modal');
-  if(old) old.remove();
+  if(old) closeModal();
+  MODAL_DISMISS_HANDLER = onDismiss;
   const div = document.createElement('div');
   div.id = 'dyn-modal';
   div.className = 'modal-wrap';
-  div.innerHTML = `<div class="modal"><h3>${esc(title)}</h3>${bodyHtml}</div>`;
-  div.addEventListener('click', e=>{ if(e.target===div) div.remove(); });
+  div.innerHTML = `<div class="modal" role="dialog" aria-modal="true"><h3>${esc(title)}</h3>${bodyHtml}</div>`;
+  div.addEventListener('click', e=>{ if(e.target===div) closeModal(); });
   document.body.appendChild(div);
 }
+
 function closeModal(){
   const m = document.getElementById('dyn-modal');
+  const dismiss = MODAL_DISMISS_HANDLER;
+  MODAL_DISMISS_HANDLER = null;
   if(m) m.remove();
+  if(dismiss) dismiss();
+}
+
+function settleCustomDialog(value){
+  const resolve = ACTIVE_DIALOG_RESOLVER;
+  ACTIVE_DIALOG_RESOLVER = null;
+  closeModal();
+  if(resolve) resolve(value);
+}
+
+function customConfirm(title, message, options={}){
+  return new Promise(resolve=>{
+    ACTIVE_DIALOG_RESOLVER = resolve;
+    openModal(title, `
+      <p class="dialog-message">${esc(message)}</p>
+      <div class="dialog-actions">
+        <button class="btn btn-ghost" id="custom-confirm-cancel">${esc(options.cancelText||'取消')}</button>
+        <button class="btn ${options.danger?'btn-danger':''}" id="custom-confirm-ok">${esc(options.confirmText||'确认')}</button>
+      </div>`, ()=>{
+        if(ACTIVE_DIALOG_RESOLVER===resolve){
+          ACTIVE_DIALOG_RESOLVER = null;
+          resolve(false);
+        }
+      });
+    document.getElementById('custom-confirm-cancel').onclick = ()=>settleCustomDialog(false);
+    document.getElementById('custom-confirm-ok').onclick = ()=>settleCustomDialog(true);
+  });
+}
+
+function customForm({title, description='', fields=[], submitText='保存', danger=false}){
+  return new Promise(resolve=>{
+    ACTIVE_DIALOG_RESOLVER = resolve;
+    const fieldsHtml = fields.map((field, index)=>dialogFieldHtml(field, index)).join('');
+    openModal(title, `
+      ${description?`<p class="dialog-message">${esc(description)}</p>`:''}
+      <form id="custom-dialog-form" onsubmit="return false;">
+        ${fieldsHtml}
+      </form>
+      <div class="dialog-error" id="custom-dialog-error"></div>
+      <div class="dialog-actions">
+        <button class="btn btn-ghost" id="custom-dialog-cancel">取消</button>
+        <button class="btn ${danger?'btn-danger':''}" id="custom-dialog-submit">${esc(submitText)}</button>
+      </div>`, ()=>{
+        if(ACTIVE_DIALOG_RESOLVER===resolve){
+          ACTIVE_DIALOG_RESOLVER = null;
+          resolve(null);
+        }
+      });
+    document.getElementById('custom-dialog-cancel').onclick = ()=>settleCustomDialog(null);
+    const submit = ()=>{
+      const result = {};
+      const errorBox = document.getElementById('custom-dialog-error');
+      errorBox.textContent = '';
+      errorBox.style.display = 'none';
+      let validationError = '';
+      for(let index=0; index<fields.length; index++){
+        const field = fields[index];
+        const input = document.getElementById(`custom-dialog-field-${index}`);
+        const value = input.value.trim();
+        if(field.required && !value){
+          validationError = `${field.label}不能为空`;
+          break;
+        }
+        if(value && field.pattern && !(new RegExp(field.pattern)).test(value)){
+          validationError = field.error || `${field.label}格式不正确`;
+          break;
+        }
+        result[field.name] = value;
+      }
+      if(validationError){
+        showDialogError(validationError);
+        return;
+      }
+      settleCustomDialog(result);
+    };
+    document.getElementById('custom-dialog-submit').onclick = submit;
+    document.getElementById('custom-dialog-form').addEventListener('keydown', event=>{
+      if(event.key==='Enter' && event.target.tagName!=='TEXTAREA'){
+        event.preventDefault();
+        submit();
+      }
+    });
+    const first = document.querySelector('#custom-dialog-form input, #custom-dialog-form textarea, #custom-dialog-form select');
+    if(first) first.focus();
+  });
+}
+
+function dialogFieldHtml(field, index){
+  const id = `custom-dialog-field-${index}`;
+  const label = esc(field.label);
+  const placeholder = esc(field.placeholder||'');
+  let control = '';
+  if(field.type==='textarea'){
+    control = `<textarea id="${id}" placeholder="${placeholder}">${esc(field.value||'')}</textarea>`;
+  } else if(field.type==='select'){
+    const options = (field.options||[]).map(option=>{
+      const value = typeof option==='string' ? option : option.value;
+      const text = typeof option==='string' ? option : option.label;
+      return `<option value="${esc(value)}" ${String(field.value||'')===String(value)?'selected':''}>${esc(text)}</option>`;
+    }).join('');
+    control = `<select id="${id}">${options}</select>`;
+  } else {
+    control = `<input id="${id}" type="${esc(field.inputType||'text')}" value="${esc(field.value||'')}" placeholder="${placeholder}" autocomplete="off">`;
+  }
+  return `<div class="dialog-field"><label for="${id}">${label}${field.required?' *':''}</label>${control}</div>`;
+}
+
+function showDialogError(message){
+  const error = document.getElementById('custom-dialog-error');
+  if(!error) return;
+  error.textContent = message;
+  error.style.display = 'block';
 }
 
 // ============ 启动：先鉴权，未登录显示登录页 ============
