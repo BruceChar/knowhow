@@ -157,14 +157,23 @@ class AskBody(BaseModel):
 class FeedbackBody(BaseModel):
     inquiry_id: str
     verdict: str
+    feedback_type: Literal[
+        "judgement", "standard_answer", "improvement_suggestion"
+    ] = "improvement_suggestion"
     reason: str = Field(default="", max_length=2000)
     corrected_answer: str = Field(default="", max_length=10000)
 
 
 class FeedbackResolveBody(BaseModel):
     action: Literal["accept", "reject"]
+    apply_to: Literal["faq", "answer_policy"] = "faq"
+    faq_mode: Literal["new", "revise"] = "new"
     resolution: str = Field(default="", max_length=2000)
     suggested_answer: str = Field(default="", max_length=10000)
+    policy_rule: str = Field(default="", max_length=10000)
+    policy_kind: Literal[
+        "instruction", "language_mirror", "require_context"
+    ] = "instruction"
 
 
 # ============ 知识问答（受认证、可见域和 customer_ready 约束） ============
@@ -203,11 +212,14 @@ def submit_feedback(body: FeedbackBody,
                 conn, user,
                 inquiry_id=body.inquiry_id.strip(),
                 verdict=body.verdict,
+                feedback_type=body.feedback_type,
                 reason=body.reason.strip(),
                 corrected_answer=body.corrected_answer.strip(),
             )
     except LookupError as exc:
         raise HTTPException(404, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
 
 
 @app.get("/api/v1/feedback")
@@ -249,6 +261,8 @@ def resolve_feedback(
                 conn, user, issue_id=issue_id,
                 action=body.action, resolution=body.resolution.strip(),
                 suggested_answer=body.suggested_answer.strip(),
+                apply_to=body.apply_to, policy_rule=body.policy_rule.strip(),
+                policy_kind=body.policy_kind, faq_mode=body.faq_mode,
             )
     except LookupError as exc:
         raise HTTPException(404, str(exc)) from exc
@@ -277,6 +291,30 @@ def list_feedback_issues(status: str | None = "open",
         rows = cur.fetchall()
     cols = ["id", "inquiry_id", "feedback", "resolution", "status",
             "created_by", "created_at", "question", "answer", "citations"]
+    return [dict(zip(cols, row)) for row in rows]
+
+
+@app.get("/api/v1/answer-policies")
+def list_answer_policies(status: str | None = "active",
+                         user: User = Depends(require_permission("suggestion.view"))):
+    """查看已审核回答规则；规则只约束回答方式，不提供业务事实。"""
+    where, params = [], []
+    if status:
+        where.append("status=%s")
+        params.append(status)
+    with _conn() as conn, conn.cursor() as cur:
+        cur.execute(f"""
+            SELECT id, name, rule, policy_kind, applies_to, priority, status,
+                   source_issue_id, created_by, approved_by, approved_at,
+                   updated_at
+            FROM answer_policy
+            {"WHERE " + " AND ".join(where) if where else ""}
+            ORDER BY priority, id DESC LIMIT 200
+        """, params)
+        rows = cur.fetchall()
+    cols = ["id", "name", "rule", "policy_kind", "applies_to", "priority",
+            "status", "source_issue_id", "created_by", "approved_by",
+            "approved_at", "updated_at"]
     return [dict(zip(cols, row)) for row in rows]
 
 

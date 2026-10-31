@@ -7,6 +7,8 @@ from typing import Any
 from src.auth.rbac import User
 
 FEEDBACK_VERDICTS = {"correct", "incorrect", "needs_review"}
+FEEDBACK_TYPES = {"judgement", "standard_answer", "improvement_suggestion"}
+POLICY_KINDS = {"instruction", "language_mirror", "require_context"}
 
 
 def first_faq_id(citations: Any) -> int | None:
@@ -41,10 +43,14 @@ def result_view(
     faq_id: int | None = None,
     faq_version: int | None = None,
     resolution: str | None = None,
+    answer_policy_id: int | None = None,
+    policy_kind: str | None = None,
 ) -> dict:
     """Build a stable, user-facing feedback result."""
     if verdict == "correct":
         label = "已记录：回答正确"
+    elif issue_status == "resolved" and answer_policy_id:
+        label = f"已采纳：回答规则 #{answer_policy_id} 已生效"
     elif issue_status == "resolved" and faq_id:
         version = f" v{faq_version}" if faq_version else ""
         label = f"已采纳：知识卡 #{faq_id}{version} 已进入待审核队列"
@@ -59,6 +65,8 @@ def result_view(
         "faq_id": faq_id,
         "faq_version": faq_version,
         "resolution": resolution,
+        "answer_policy_id": answer_policy_id,
+        "policy_kind": policy_kind,
     }
 
 
@@ -87,6 +95,7 @@ def submit_feedback(
     verdict: str,
     reason: str,
     corrected_answer: str,
+    feedback_type: str = "improvement_suggestion",
 ) -> dict:
     """Persist one judgement and return its current processing result.
 
@@ -94,9 +103,20 @@ def submit_feedback(
     of creating duplicate work. A later "correct" judgement closes an open
     issue as rejected, preserving the original audit trail.
     """
+    if feedback_type not in FEEDBACK_TYPES:
+        raise ValueError("反馈类型必须是标准答案或改进建议")
+    if verdict == "correct":
+        feedback_type = "judgement"
+    elif feedback_type == "judgement":
+        feedback_type = "improvement_suggestion"
+    if feedback_type == "improvement_suggestion" and corrected_answer.strip():
+        feedback_type = "standard_answer"
+    if feedback_type == "standard_answer" and not corrected_answer.strip():
+        raise ValueError("标准答案不能为空")
     feedback_text = json.dumps(
         {
             "verdict": verdict,
+            "feedback_type": feedback_type,
             "reason": reason,
             "corrected_answer": corrected_answer,
             "by": user.name,
@@ -161,24 +181,26 @@ def submit_feedback(
                 cur.execute(
                     """
                     UPDATE issue
-                    SET feedback=%s, feedback_verdict=%s, suggested_answer=%s,
+                    SET feedback=%s, feedback_verdict=%s, feedback_type=%s,
+                        suggested_answer=%s,
                         faq_id=COALESCE(%s, faq_id), updated_at=now()
                     WHERE id=%s
                     """,
-                    (feedback_text, verdict, corrected_answer, faq_id, issue_id),
+                    (feedback_text, verdict, feedback_type, corrected_answer,
+                     faq_id, issue_id),
                 )
             else:
                 cur.execute(
                     """
                     INSERT INTO issue
                       (faq_id, inquiry_id, feedback, feedback_verdict,
-                       suggested_answer, status, created_by,
+                       feedback_type, suggested_answer, status, created_by,
                        created_by_account_id, related_audit)
-                    VALUES (%s,%s,%s,%s,%s,'open',%s,%s,%s)
+                    VALUES (%s,%s,%s,%s,%s,%s,'open',%s,%s,%s)
                     RETURNING id
                     """,
                     (
-                        faq_id, inquiry_id, feedback_text, verdict,
+                        faq_id, inquiry_id, feedback_text, verdict, feedback_type,
                         corrected_answer, user.name, user.id, audit_id,
                     ),
                 )
@@ -193,6 +215,7 @@ def submit_feedback(
         "ok": True,
         "inquiry_id": inquiry_id,
         "verdict": verdict,
+        "feedback_type": feedback_type,
         "reason": reason,
         "corrected_answer": corrected_answer,
         **result,
@@ -227,13 +250,15 @@ def list_feedback(
                    a.user_feedback, a.feedback_verdict, a.feedback_at,
                    a.feedback_by, i.id, i.status, i.feedback_verdict,
                    i.suggested_answer, i.resolution, i.faq_id, i.faq_version,
-                   i.resolved_by, i.resolved_at
+                   i.resolved_by, i.resolved_at, i.feedback_type,
+                   i.answer_policy_id, p.name, p.rule, p.policy_kind
             FROM audit_log a
             LEFT JOIN LATERAL (
               SELECT x.* FROM issue x
               WHERE x.id=a.issue_id OR x.related_audit=a.id
               ORDER BY x.id DESC LIMIT 1
             ) i ON true
+            LEFT JOIN answer_policy p ON p.id=i.answer_policy_id
             WHERE {' AND '.join(where)}
             ORDER BY a.feedback_at DESC NULLS LAST, a.id DESC
             LIMIT %s
@@ -245,6 +270,10 @@ def list_feedback(
     for row in rows:
         parsed = _parse_feedback(row[4])
         row_verdict = row[5] or parsed.get("verdict") or "needs_review"
+        feedback_type = (
+            row[17] or parsed.get("feedback_type")
+            or ("standard_answer" if row[11] else "improvement_suggestion")
+        )
         issue_id, issue_status = row[8], row[9]
         result.append(
             {
@@ -253,6 +282,7 @@ def list_feedback(
                 "answer": row[2],
                 "citations": row[3],
                 "verdict": row_verdict,
+                "feedback_type": feedback_type,
                 "reason": parsed.get("reason", ""),
                 "feedback_at": row[6],
                 "feedback_by": row[7],
@@ -265,6 +295,10 @@ def list_feedback(
                         "faq_version": row[14],
                         "resolved_by": row[15],
                         "resolved_at": row[16],
+                        "answer_policy_id": row[18],
+                        "policy_name": row[19],
+                        "policy_rule": row[20],
+                        "policy_kind": row[21],
                     }
                     if issue_id
                     else None
@@ -273,6 +307,7 @@ def list_feedback(
                 "result": result_view(
                     row_verdict, issue_id, issue_status,
                     row[13], row[14], row[12],
+                    row[18], row[21],
                 ),
             }
         )
@@ -305,14 +340,18 @@ def feedback_summary(conn, user: User) -> dict:
             SELECT count(*) FILTER (WHERE i.status='open'),
                    count(*) FILTER (WHERE i.status='resolved'),
                    count(*) FILTER (WHERE i.status='rejected'),
-                   count(*) FILTER (WHERE i.faq_version IS NOT NULL)
+                   count(*) FILTER (WHERE i.faq_version IS NOT NULL),
+                   count(*) FILTER (WHERE i.feedback_type='standard_answer'),
+                   count(*) FILTER (WHERE i.feedback_type='improvement_suggestion'),
+                   count(*) FILTER (WHERE i.answer_policy_id IS NOT NULL)
             FROM issue i
             JOIN audit_log a ON a.id=i.related_audit
             WHERE true{scope}
             """,
             params,
         )
-        open_count, resolved, rejected, applied = cur.fetchone()
+        (open_count, resolved, rejected, applied,
+         standard_answers, suggestions, policies_applied) = cur.fetchone()
     return {
         "feedback_total": total,
         "audit_total": audit_total,
@@ -324,6 +363,9 @@ def feedback_summary(conn, user: User) -> dict:
         "resolved_issues": resolved,
         "rejected_issues": rejected,
         "applied_issues": applied,
+        "standard_answer_issues": standard_answers,
+        "improvement_suggestion_issues": suggestions,
+        "applied_policies": policies_applied,
     }
 
 
@@ -335,15 +377,25 @@ def resolve_feedback_issue(
     action: str,
     resolution: str,
     suggested_answer: str = "",
+    apply_to: str = "faq",
+    faq_mode: str = "new",
+    policy_rule: str = "",
+    policy_kind: str = "instruction",
 ) -> dict:
-    """Accept or reject an issue; accepted corrections become draft FAQ versions."""
+    """Accept feedback as FAQ content or as a reviewed answer policy."""
     if action not in {"accept", "reject"}:
         raise ValueError("action 必须是 accept/reject")
+    if action == "accept" and apply_to not in {"faq", "answer_policy"}:
+        raise ValueError("apply_to 必须是 faq/answer_policy")
+    if apply_to == "faq" and faq_mode not in {"new", "revise"}:
+        raise ValueError("faq_mode 必须是 new/revise")
+    if apply_to == "answer_policy" and policy_kind not in POLICY_KINDS:
+        raise ValueError("policy_kind 不支持")
     with conn.cursor() as cur:
         cur.execute(
             """
             SELECT i.status, i.suggested_answer, i.faq_id,
-                   a.question, i.inquiry_id
+                   a.question, i.inquiry_id, i.feedback_type, i.feedback
             FROM issue i
             LEFT JOIN audit_log a ON a.id=i.related_audit
             WHERE i.id=%s
@@ -354,7 +406,8 @@ def resolve_feedback_issue(
         row = cur.fetchone()
         if not row:
             raise LookupError("反馈问题不存在")
-        status, stored_answer, faq_id, question, inquiry_id = row
+        (status, stored_answer, faq_id, question, inquiry_id,
+         feedback_type, feedback_text) = row
         if status != "open":
             raise RuntimeError("该反馈已经处理，不能重复处理")
 
@@ -373,10 +426,49 @@ def resolve_feedback_issue(
                 "incorrect", issue_id, "rejected",
                 faq_id=faq_id, resolution=final_resolution,
             )
+        elif apply_to == "answer_policy":
+            parsed = _parse_feedback(feedback_text)
+            rule = (
+                policy_rule or stored_answer or parsed.get("reason") or ""
+            ).strip()
+            if not rule:
+                raise ValueError("采纳为回答规则前必须填写规则内容")
+            cur.execute(
+                """
+                INSERT INTO answer_policy
+                  (name, rule, policy_kind, applies_to, priority, status,
+                   source_issue_id, created_by, approved_by, approved_at)
+                VALUES (%s,%s,%s,'all',100,'active',%s,%s,%s,now())
+                RETURNING id
+                """,
+                (
+                    f"客服反馈规则 #{issue_id}", rule, policy_kind,
+                    issue_id, user.name, user.name,
+                ),
+            )
+            policy_id = cur.fetchone()[0]
+            final_resolution = resolution or "已采纳为回答规则并立即生效"
+            cur.execute(
+                """
+                UPDATE issue
+                SET status='resolved', resolution=%s,
+                    answer_policy_id=%s, resolved_by=%s, resolved_at=now(),
+                    updated_at=now()
+                WHERE id=%s
+                """,
+                (final_resolution, policy_id, user.name, issue_id),
+            )
+            result = result_view(
+                "incorrect", issue_id, "resolved",
+                resolution=final_resolution, answer_policy_id=policy_id,
+                policy_kind=policy_kind,
+            )
         else:
             answer = (suggested_answer or stored_answer or "").strip()
             if not answer:
                 raise ValueError("采纳反馈前必须填写建议答案")
+            if faq_mode == "new":
+                faq_id = None
             if faq_id:
                 cur.execute("SELECT status FROM faq WHERE id=%s", (faq_id,))
                 faq = cur.fetchone()
@@ -429,6 +521,7 @@ def resolve_feedback_issue(
                 SET status='resolved', resolution=%s, faq_id=%s,
                     faq_version=%s, suggested_answer=COALESCE(NULLIF(%s, ''),
                                                              suggested_answer),
+                    feedback_type='standard_answer',
                     resolved_by=%s, resolved_at=now(), updated_at=now()
                 WHERE id=%s
                 """,

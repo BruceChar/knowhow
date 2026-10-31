@@ -49,7 +49,10 @@ def main() -> None:
         if cur.fetchone()[0] is None:
             if _apply(cur, "schema.sql", ROOT / "db" / "schema.sql"):
                 applied.append("schema.sql")
-        for name in ("migration_v2.sql", "migration_v3.sql", "migration_v4.sql"):
+        for name in (
+            "migration_v2.sql", "migration_v3.sql", "migration_v4.sql",
+            "migration_v5.sql",
+        ):
             path = ROOT / "db" / name
             if path.exists() and _apply(cur, name, path):
                 applied.append(name)

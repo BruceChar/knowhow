@@ -882,16 +882,26 @@ async function sendAgentFeedback(verdict){
   if(!LAST_AGENT_RESULT) return;
   if(LAST_AGENT_RESULT.feedback &&
      !confirm('这条问答已有反馈，是否用本次判断覆盖？')) return;
-  const reason = verdict==='correct' ? '客服确认可用' :
-    (prompt('请简要说明问题或需修正的原因：') || '');
-  const corrected = verdict==='incorrect' ?
-    (prompt('建议的正确答复（可留空）：') || '') : '';
+  let feedbackType = 'judgement';
+  let reason = '客服确认可用';
+  let corrected = '';
+  if(verdict!=='correct'){
+    const reasonInput = prompt('修改原因或改进建议：',
+      '回答不符合客户问题，需要补充正确内容或调整回答方式。');
+    if(reasonInput===null) return;
+    reason = reasonInput.trim() || '需要修正';
+    const answerInput = prompt(
+      '如已有可直接复用的标准答案，请填写；留空则作为改进建议提交：', '');
+    if(answerInput===null) return;
+    corrected = answerInput.trim();
+    feedbackType = corrected ? 'standard_answer' : 'improvement_suggestion';
+  }
   try {
     const d = await api('/api/v1/feedback', {
       method:'POST',
       body:JSON.stringify({
         inquiry_id:LAST_AGENT_RESULT.inquiry_id,
-        verdict, reason, corrected_answer:corrected
+        verdict, feedback_type:feedbackType, reason, corrected_answer:corrected
       })
     });
     LAST_AGENT_RESULT.feedback = d;
@@ -907,10 +917,14 @@ async function sendAgentFeedback(verdict){
 function feedbackReceipt(d){
   const status = d.issue_status || '';
   const cls = status==='resolved' ? 'tag-ok' : status==='open' ? 'tag-red' : 'tag-blue';
+  const typeLabel = d.feedback_type==='standard_answer' ? '标准答案' :
+    d.feedback_type==='improvement_suggestion' ? '改进建议' : '客服判断';
   return `<div style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:12px;">
     <span class="tag ${cls}">${esc(d.result?.label||'反馈已记录')}</span>
+    <span class="tag tag-blue" style="margin-left:6px;">${typeLabel}</span>
     ${d.issue_id ? `<span style="margin-left:8px;">问题单 #${d.issue_id}</span>`:''}
     ${d.faq_id ? `<span style="margin-left:8px;">知识卡 #${d.faq_id}${d.faq_version?' v'+d.faq_version:''}</span>`:''}
+    ${d.answer_policy_id ? `<span style="margin-left:8px;">回答规则 #${d.answer_policy_id}</span>`:''}
     ${d.resolution ? `<div style="margin-top:6px;color:var(--muted);">结论：${esc(d.resolution)}</div>`:''}
     <div style="margin-top:6px;"><a href="#" onclick="showPage('feedback');return false;" style="color:var(--blue)">查看全部反馈结果</a></div>
   </div>`;
@@ -919,6 +933,9 @@ function feedbackReceipt(d){
 let FEEDBACK_ROWS = [];
 const FEEDBACK_LABELS = {correct:'回答正确', incorrect:'需要修正', needs_review:'待复核'};
 const FEEDBACK_STATUS_LABELS = {open:'待处理', resolved:'已采纳', rejected:'未采纳'};
+const FEEDBACK_TYPE_LABELS = {
+  standard_answer:'标准答案', improvement_suggestion:'改进建议', judgement:'客服判断'
+};
 
 async function loadFeedbackCenter(){
   const status = document.getElementById('fb-status')?.value || '';
@@ -948,15 +965,17 @@ async function loadFeedbackCenter(){
       const result = r.result || {};
       const detail = [
         result.label || '反馈已记录',
+        FEEDBACK_TYPE_LABELS[r.feedback_type] || '客服判断',
         r.reason ? `原因：${r.reason}` : '',
-        issue?.resolution ? `结论：${issue.resolution}` : ''
+        issue?.resolution ? `结论：${issue.resolution}` : '',
+        issue?.policy_rule ? `规则：${issue.policy_rule}` : ''
       ].filter(Boolean).join('；');
       return `<tr>
         <td class="mono">${esc((r.feedback_at||'').slice(0,16).replace('T',' '))}</td>
         <td>${esc(r.question||'-')}</td>
         <td><span class="tag ${r.verdict==='correct'?'tag-ok':'tag-red'}">${esc(FEEDBACK_LABELS[r.verdict]||r.verdict)}</span></td>
         <td><span class="tag ${cls}">${esc(issueLabel)}</span>${issue?`<div class="mono" style="margin-top:3px;">#${issue.id}</div>`:''}</td>
-        <td style="font-size:12px;">${esc(detail)}${issue?.faq_id?`<div style="margin-top:4px;color:var(--ok)">知识卡 #${issue.faq_id}${issue.faq_version?' v'+issue.faq_version:''}</div>`:''}</td>
+        <td style="font-size:12px;">${esc(detail)}${issue?.faq_id?`<div style="margin-top:4px;color:var(--ok)">知识卡 #${issue.faq_id}${issue.faq_version?' v'+issue.faq_version:''}</div>`:''}${issue?.answer_policy_id?`<div style="margin-top:4px;color:var(--blue)">回答规则 #${issue.answer_policy_id}</div>`:''}</td>
         <td>${canProcess ? `
           <button class="btn" style="padding:3px 8px;font-size:12px;background:var(--ok);" onclick="resolveFeedback(${idx},'accept')">采纳修正</button>
           <button class="btn btn-danger" style="padding:3px 8px;font-size:12px;" onclick="resolveFeedback(${idx},'reject')">不采纳</button>`:'-'}</td>
@@ -965,26 +984,100 @@ async function loadFeedbackCenter(){
   } catch(e){ showMsg('加载反馈结果失败：'+e.message, false); }
 }
 
+let PENDING_FEEDBACK_RESOLUTION = null;
+
 async function resolveFeedback(index, action){
   const row = FEEDBACK_ROWS[index];
   const issue = row?.issue;
   if(!issue) return;
-  let suggested = '';
-  if(action==='accept'){
-    suggested = prompt('采纳后的知识答案（将生成待审核版本）：',
-      row.suggested_answer || row.answer || '') || '';
-    if(!suggested.trim()){ showMsg('采纳前必须填写建议答案', false); return; }
+  if(action==='reject'){
+    const resolution = prompt('不采纳原因：', '审核后决定不修改现有知识');
+    if(resolution===null) return;
+    try {
+      const d = await api(`/api/v1/feedback/issues/${issue.id}/resolve`, {
+        method:'POST', body:JSON.stringify({action:'reject', resolution})
+      });
+      showMsg(d.result?.label || `反馈问题 #${issue.id} 已处理`, true);
+      await loadFeedbackCenter();
+    } catch(e){ showMsg('处理反馈失败：'+e.message, false); }
+    return;
   }
-  const resolution = prompt(
-    action==='accept' ? '处理结论（可选）：' : '不采纳原因：',
-    action==='accept' ? '已采纳反馈并生成待审核知识版本' : '审核后决定不修改现有知识'
-  );
-  if(resolution===null) return;
+  const isStandard = row.feedback_type==='standard_answer';
+  const defaultKind = /中文|英文|语言/.test(row.reason||'') ? 'language_mirror' :
+    /先问|澄清|补全|型号|参数/.test(row.reason||'') ? 'require_context' : 'instruction';
+  PENDING_FEEDBACK_RESOLUTION = {row, action};
+  openModal('采纳反馈', `
+    <div class="form-grid">
+      <div class="full"><label>客户问题</label>
+        <div style="padding:8px;background:#f8fafc;border-radius:6px;">${esc(row.question||'-')}</div></div>
+      <div class="full"><label>反馈内容</label>
+        <div style="padding:8px;background:#f8fafc;border-radius:6px;font-size:13px;">${esc(row.reason||'无补充说明')}</div></div>
+      <div class="full"><label>采纳去向</label>
+        <select id="fb-apply-to" onchange="toggleFeedbackApplyFields()">
+          <option value="answer_policy" ${isStandard?'':'selected'}>回答规则（适合语言/格式/先澄清等建议）</option>
+          <option value="faq" ${isStandard?'selected':''}>知识卡标准答案（适合明确事实与话术）</option>
+        </select></div>
+    </div>
+    <div id="fb-policy-fields">
+      <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px;">可执行规则</label>
+      <textarea id="fb-policy-rule" style="width:100%;min-height:100px;padding:8px;border:1px solid var(--border);border-radius:6px;">${esc(row.reason||'')}</textarea>
+      <label style="display:block;font-size:12px;color:var(--muted);margin:10px 0 4px;">规则类型</label>
+      <select id="fb-policy-kind" class="select" style="width:100%;">
+        <option value="instruction" ${defaultKind==='instruction'?'selected':''}>通用指令（LLM 可执行，事实仍需依据）</option>
+        <option value="language_mirror" ${defaultKind==='language_mirror'?'selected':''}>客户语言一致性模板</option>
+        <option value="require_context" ${defaultKind==='require_context'?'selected':''}>先澄清再回答</option>
+      </select>
+    </div>
+    <div id="fb-faq-fields" style="display:none;">
+      <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px;">知识卡处理方式</label>
+      <select id="fb-faq-mode" class="select" style="width:100%;margin-bottom:10px;">
+        <option value="new">新建知识卡：使用本次客户问题 + 标准答案</option>
+        <option value="revise">修订当前引用知识卡（仅当问题确实对应时）</option>
+      </select>
+      <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px;">标准答案（生成待审核知识卡）</label>
+      <textarea id="fb-standard-answer" style="width:100%;min-height:100px;padding:8px;border:1px solid var(--border);border-radius:6px;">${esc(row.suggested_answer||'')}</textarea>
+    </div>
+    <label style="display:block;font-size:12px;color:var(--muted);margin:12px 0 4px;">处理结论</label>
+    <input id="fb-resolution" class="select" style="width:100%;" value="已采纳客服反馈">
+    <div style="margin-top:14px;text-align:right;">
+      <button class="btn btn-ghost" onclick="closeModal()">取消</button>
+      <button class="btn" onclick="submitFeedbackResolution()">确认采纳</button>
+    </div>`);
+  toggleFeedbackApplyFields();
+}
+
+function toggleFeedbackApplyFields(){
+  const target = document.getElementById('fb-apply-to')?.value || 'answer_policy';
+  document.getElementById('fb-policy-fields').style.display = target==='answer_policy' ? '' : 'none';
+  document.getElementById('fb-faq-fields').style.display = target==='faq' ? '' : 'none';
+}
+
+async function submitFeedbackResolution(){
+  const pending = PENDING_FEEDBACK_RESOLUTION;
+  if(!pending) return;
+  const issue = pending.row.issue;
+  const applyTo = document.getElementById('fb-apply-to').value;
+  const resolution = document.getElementById('fb-resolution').value.trim();
+  const suggested = document.getElementById('fb-standard-answer').value.trim();
+  const policyRule = document.getElementById('fb-policy-rule').value.trim();
+  if(applyTo==='faq' && !suggested){
+    showMsg('采纳为知识卡前必须填写标准答案', false); return;
+  }
+  if(applyTo==='answer_policy' && !policyRule){
+    showMsg('回答规则不能为空', false); return;
+  }
   try {
     const d = await api(`/api/v1/feedback/issues/${issue.id}/resolve`, {
       method:'POST',
-      body:JSON.stringify({action, resolution, suggested_answer:suggested})
+      body:JSON.stringify({
+        action:'accept', apply_to:applyTo, resolution,
+        faq_mode:document.getElementById('fb-faq-mode').value,
+        suggested_answer:suggested, policy_rule:policyRule,
+        policy_kind:document.getElementById('fb-policy-kind').value
+      })
     });
+    PENDING_FEEDBACK_RESOLUTION = null;
+    closeModal();
     showMsg(d.result?.label || `反馈问题 #${issue.id} 已处理`, true);
     await loadFeedbackCenter();
   } catch(e){ showMsg('处理反馈失败：'+e.message, false); }

@@ -8,7 +8,7 @@ from dataclasses import dataclass
 import psycopg
 
 from src.auth.rbac import DATA_SCOPE_FULL, User
-from src.core import gate, generate, search
+from src.core import gate, generate, policies, search
 from src.tools.facts import FactResult, FactTool, OfferFactTool
 
 
@@ -73,6 +73,7 @@ def ask_question(
         customer_ready=True,
         backend=None,
     )
+    active_policies = policies.load_active_policies(conn)
     decision = gate.decide(
         question,
         cards,
@@ -115,10 +116,18 @@ def ask_question(
                 tool_payload,
                 decision["level"],
                 backend=llm_backend,
+                policies=active_policies,
             )
             answer = payload["answer"]
             citation_ids = payload["citations"]
             model = payload["model"]
+            if payload.get("requires_human_review"):
+                decision = {
+                    **decision,
+                    "level": "C",
+                    "reason": "回答语言与客户问题不一致，需要人工转写确认",
+                }
+                needs_human_review = True
         except Exception as exc:
             decision = {**decision, "level": "C", "reason": f"模型生成失败：{exc}"}
             needs_human_review = True

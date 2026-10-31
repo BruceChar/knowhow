@@ -100,10 +100,20 @@ class TestFeedbackReceipts(unittest.TestCase):
         assert result["issue_id"] == 31
         assert result["issue_status"] == "open"
         assert result["faq_id"] == 21
+        assert result["feedback_type"] == "standard_answer"
         assert "待处理" in result["label"]
         joined = "\n".join(sql for sql, _ in conn.cursor_obj.calls)
         assert "feedback_verdict" in joined
         assert "suggested_answer" in joined
+
+    def test_standard_answer_requires_answer_text(self):
+        conn = FakeConnection()
+        with self.assertRaisesRegex(ValueError, "标准答案不能为空"):
+            submit_feedback(
+                conn, agent(), inquiry_id="inq-1", verdict="incorrect",
+                feedback_type="standard_answer", reason="答案有误",
+                corrected_answer="",
+            )
 
     def test_repeated_incorrect_feedback_updates_open_issue(self):
         conn = FakeConnection(fetchone_values=[
@@ -140,7 +150,8 @@ class TestFeedbackReceipts(unittest.TestCase):
 class TestFeedbackKnowledgeLoop(unittest.TestCase):
     def test_accept_without_answer_is_rejected(self):
         conn = FakeConnection(fetchone_values=[
-            ("open", "", None, "客户问题", "inq-1"),
+            ("open", "", None, "客户问题", "inq-1",
+             "improvement_suggestion", '{"reason":"需要中文"}'),
         ])
         with self.assertRaisesRegex(ValueError, "建议答案"):
             resolve_feedback_issue(
@@ -151,7 +162,8 @@ class TestFeedbackKnowledgeLoop(unittest.TestCase):
 
     def test_accept_creates_draft_faq_and_links_version(self):
         conn = FakeConnection(fetchone_values=[
-            ("open", "正确答复", None, "客户问题", "inq-1"),
+            ("open", "正确答复", None, "客户问题", "inq-1",
+             "standard_answer", '{"reason":"答案有误"}'),
             (51, 3),  # inserted faq id/version
         ])
         result = resolve_feedback_issue(
@@ -167,13 +179,50 @@ class TestFeedbackKnowledgeLoop(unittest.TestCase):
         assert "'draft'" in sql
         assert "faq_version=%s" in sql
 
+    def test_suggestion_accepts_as_active_answer_policy(self):
+        conn = FakeConnection(fetchone_values=[
+            ("open", "", None, "牵引绳有哪些？", "inq-2",
+             "improvement_suggestion",
+             '{"reason":"客户用中文提问时必须用中文回答"}'),
+            (71,),  # inserted policy id
+        ])
+        result = resolve_feedback_issue(
+            conn, agent(permissions={"suggestion.review"}),
+            issue_id=41, action="accept", apply_to="answer_policy",
+            policy_kind="language_mirror", resolution="采纳为中文一致性规则",
+        )
+        assert result["answer_policy_id"] == 71
+        assert result["policy_kind"] == "language_mirror"
+        assert "回答规则" in result["label"]
+        sql = "\n".join(sql for sql, _ in conn.cursor_obj.calls)
+        assert "INSERT INTO answer_policy" in sql
+        assert "answer_policy_id=%s" in sql
+        assert "INSERT INTO faq" not in sql
+
+    def test_standard_answer_defaults_to_new_faq_for_original_question(self):
+        conn = FakeConnection(fetchone_values=[
+            ("open", "我们提供固定和伸缩牵引绳。", 7, "牵引绳有哪些？", "inq-3",
+             "standard_answer", '{"reason":"原回答只问品类"}'),
+            (61, 1),  # newly inserted FAQ and version
+        ])
+        result = resolve_feedback_issue(
+            conn, agent(permissions={"suggestion.review"}),
+            issue_id=51, action="accept", resolution="新建标准答案",
+            apply_to="faq", faq_mode="new",
+        )
+        assert result["faq_id"] == 61
+        sql = "\n".join(sql for sql, _ in conn.cursor_obj.calls)
+        assert "INSERT INTO faq" in sql
+        assert "UPDATE faq" not in sql
+        assert "faq_id=%s" in sql
+
     def test_summary_scope_for_agent_is_own_records(self):
         conn = FakeConnection(
             fetchone_values=[(4, 2, 1, 1, 10)],
             fetchall_values=[[]],
         )
         # Second summary query also calls fetchone.
-        conn.cursor_obj.fetchone_values.append((2, 0, 1, 1))
+        conn.cursor_obj.fetchone_values.append((2, 0, 1, 1, 3, 1, 1))
         summary = feedback_summary(conn, agent())
         assert summary["feedback_rate"] == 40.0
         assert conn.cursor_obj.calls[0][1] == [7]
