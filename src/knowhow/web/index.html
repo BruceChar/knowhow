@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Knowhow · 外贸销售知识工作台</title>
+  <link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+  <section class="auth-shell" id="setup-view" hidden>
+    <div class="auth-card">
+      <div class="brand-mark">K</div>
+      <p class="eyebrow">首次使用</p>
+      <h1>建立公司的销售知识工作台</h1>
+      <p class="muted">三分钟完成初始化。之后业务员从真实客户问题开始，知识在工作过程中沉淀。</p>
+      <form id="setup-form" class="form-stack">
+        <label>公司名称<input name="company_name" required maxlength="120" placeholder="例如：宁波某某宠物用品"></label>
+        <label>主营行业<input name="industry" maxlength="120" placeholder="例如：宠物用品出口"></label>
+        <div class="form-row">
+          <label>负责人登录名<input name="username" required minlength="3" placeholder="owner"></label>
+          <label>负责人姓名<input name="display_name" required placeholder="王老板"></label>
+        </div>
+        <label>登录密码<input name="password" type="password" required minlength="8" placeholder="至少 8 位"></label>
+        <div class="form-error" id="setup-error"></div>
+        <button class="button primary wide" type="submit">创建并进入</button>
+      </form>
+    </div>
+  </section>
+
+  <section class="auth-shell" id="login-view" hidden>
+    <div class="auth-card compact">
+      <div class="brand-mark">K</div>
+      <p class="eyebrow">Knowhow</p>
+      <h1>回到销售工作台</h1>
+      <form id="login-form" class="form-stack">
+        <label>登录名<input name="username" required autocomplete="username"></label>
+        <label>密码<input name="password" type="password" required autocomplete="current-password"></label>
+        <div class="form-error" id="login-error"></div>
+        <button class="button primary wide" type="submit">登录</button>
+      </form>
+    </div>
+  </section>
+
+  <div class="app-shell" id="app-view" hidden>
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark small">K</div>
+        <div><strong>Knowhow</strong><span id="org-name"></span></div>
+      </div>
+      <nav class="nav" id="main-nav">
+        <button data-page="today"><span>01</span>今日工作台</button>
+        <button data-page="ask"><span>02</span>销售工作台</button>
+        <button data-page="knowledge"><span>03</span>公司知识</button>
+        <button data-page="review"><span>04</span>待处理</button>
+        <button data-page="team"><span>05</span>团队</button>
+      </nav>
+      <div class="sidebar-foot">
+        <div id="user-label"></div>
+        <button class="text-button" id="change-password-button">修改密码</button>
+        <button class="text-button" id="logout-button">退出登录</button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow" id="page-eyebrow">SALES INTELLIGENCE</p>
+          <h1 id="page-title">今日工作台</h1>
+        </div>
+        <button class="button ghost mobile-menu" id="mobile-menu">菜单</button>
+      </header>
+
+      <section class="page active" id="page-today">
+        <div class="hero-card">
+          <div>
+            <p class="eyebrow">TODAY</p>
+            <h2>今天先处理真正影响成交的事</h2>
+            <p class="muted">知识数量不是目标。让高频问题有可信答案，让业务员少停下来问人。</p>
+          </div>
+          <div class="readiness">
+            <strong id="readiness-value">0%</strong>
+            <span>系统可上岗度</span>
+          </div>
+        </div>
+        <div class="metric-grid" id="metric-grid"></div>
+        <div class="two-column">
+          <div class="panel">
+            <div class="panel-head"><h3>需要你处理</h3><button class="text-button" data-target="review">查看全部</button></div>
+            <div id="action-list" class="action-list"></div>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><h3>上线准备度</h3><span class="muted small">按真实使用计算</span></div>
+            <div id="checklist" class="checklist"></div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h3>最近知识</h3><button class="text-button" data-target="knowledge">进入知识库</button></div>
+          <div id="recent-knowledge" class="knowledge-strip"></div>
+        </div>
+      </section>
+
+      <section class="page" id="page-ask">
+        <div class="workbench-grid">
+          <div class="panel">
+            <p class="eyebrow">CUSTOMER QUESTION</p>
+            <h2>客户问什么？</h2>
+            <textarea id="question-input" class="question-box" placeholder="粘贴客户原话，例如：What is your MOQ for 500 units with our logo?"></textarea>
+            <div class="question-actions">
+              <span class="muted small">系统只使用已发布知识，不确定时转人工。</span>
+              <button class="button primary" id="ask-button">生成回复草稿</button>
+            </div>
+          </div>
+          <div class="side-note">
+            <strong>好的回复标准</strong>
+            <p>先回答客户问题，再给出必要确认；不编造价格、交期和认证承诺。</p>
+          </div>
+        </div>
+        <div id="answer-panel" class="answer-panel empty-state">
+          <p>生成后会在这里显示回复草稿、依据和可执行操作。</p>
+        </div>
+      </section>
+
+      <section class="page" id="page-knowledge">
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">COMPANY BRAIN</p>
+              <h2>公司知识</h2>
+            </div>
+            <div class="button-row">
+              <button class="button ghost" id="import-knowledge-button">批量导入</button>
+              <button class="button primary" id="new-knowledge-button">新建知识</button>
+            </div>
+          </div>
+          <div class="filters">
+            <select id="knowledge-status">
+              <option value="">全部状态</option>
+              <option value="draft">待审核</option>
+              <option value="published">已发布</option>
+              <option value="archived">已归档</option>
+            </select>
+            <select id="knowledge-kind">
+              <option value="">全部类型</option>
+              <option value="faq">标准问答</option>
+              <option value="product">产品知识</option>
+              <option value="policy">公司规则</option>
+              <option value="playbook">场景手册</option>
+              <option value="case">客户案例</option>
+              <option value="sop">内部 SOP</option>
+            </select>
+            <input id="knowledge-search" placeholder="搜索标题、问题或答案">
+            <button class="button ghost" id="knowledge-refresh">刷新</button>
+          </div>
+          <div id="knowledge-list" class="knowledge-list"></div>
+        </div>
+      </section>
+
+      <section class="page" id="page-review">
+        <div class="panel">
+          <div class="panel-head">
+            <div><p class="eyebrow">REVIEW INBOX</p><h2>待处理</h2></div>
+            <select id="gap-status">
+              <option value="open">待处理</option>
+              <option value="resolved">已解决</option>
+              <option value="ignored">已忽略</option>
+            </select>
+          </div>
+          <p class="muted">系统会从无答案、高风险问题和大幅人工修改中生成知识缺口。</p>
+          <div id="gap-list" class="gap-list"></div>
+        </div>
+      </section>
+
+      <section class="page" id="page-team">
+        <div class="panel">
+          <div class="panel-head">
+            <div><p class="eyebrow">TEAM</p><h2>团队账户</h2></div>
+            <button class="button primary" id="new-account-button">添加成员</button>
+          </div>
+          <p class="muted">默认角色：老板、知识负责人、业务员。复杂权限留到确有需要时再配置。</p>
+          <div id="team-list" class="team-list"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="modal-root" id="modal-root" hidden></div>
+  <div class="toast" id="toast" aria-live="polite"></div>
+  <script type="module" src="/assets/app.js"></script>
+</body>
+</html>
+

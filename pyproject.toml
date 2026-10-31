@@ -1,23 +1,17 @@
 [project]
 name = "knowhow"
-version = "0.1.0"
-description = "Add your description here"
+version = "0.2.0"
+description = "AI sales knowledge workspace for small and medium exporters"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "fastapi==0.159.1",
-    "jieba>=0.42.1",
-    "openai==3.37.0",
-    "openpyxl==3.1.5",
-    "pandas==3.1.0",
-    "pgvector==0.5.1",
-    "psycopg[binary]==3.3.6",
-    "python-dotenv>=1.2.4",
-    "python-multipart==0.0.32",
-    "pyyaml>=6.0.3",
-    "sentence-transformers==6.2.0",
-    "transformers>=5.20.2",
-    "uvicorn[standard]==0.54.0",
+  "fastapi==0.159.1",
+  "jieba>=0.42.1",
+  "openai>=2.0.0",
+  "psycopg[binary]>=3.2.0",
+  "python-dotenv>=1.0.0",
+  "python-multipart>=0.0.20",
+  "uvicorn[standard]>=0.35.0",
 ]
 
 [build-system]
@@ -25,23 +19,19 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project.scripts]
-knowhow = "src.main:run"
+knowhow = "knowhow.main:run"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src"]
-
-[[tool.uv.index]]
-url = "https://mirrors.aliyun.com/pypi/simple/"
-default = true
-
-[dependency-groups]
-dev = [
-    "pytest>=9.2.0",
-]
+packages = ["src/knowhow"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-markers = [
-    "integration: 依赖 8000 服务在线的 API 冒烟测试（服务不可达时自动 skip）",
+pythonpath = ["src"]
+addopts = "-q"
+
+[dependency-groups]
+dev = [
+  "httpx>=0.27.0",
+  "pytest>=8.3.0",
 ]
-addopts = "-m 'not integration'"
+

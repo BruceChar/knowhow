@@ -1,45 +1,47 @@
 # AGENT.md
 
-## 会话启动
+## 项目方向
 
-1. 先阅读本文件与 `docs/实现状态与验收记录.md`，确认当前状态、已知限制和下一验收项。
-2. 检查 `git status`，保留工作区中与当前任务无关的用户改动。
-3. 涉及反馈、知识发布或权限时，同时阅读 `docs/产品设计文档.md` 的相关章节。
+当前运行的是 Knowhow V2，源码位于 `src/knowhow/`。`legacy/v1/` 仅供历史参考，
+不得被新应用导入，也不要在旧结构上继续扩展。
 
-## 不可破坏的约束
+开始工作前阅读：
 
-- 客服反馈经审核员采纳后，只能生成待审核知识版本；不得绕过审核直接发布。
-- 标准答案与改进建议必须分流：事实内容进入 FAQ，语言/格式/澄清要求进入
-  `answer_policy`；不得让 LLM 从模糊建议自动编造业务事实。
-- 不得修改已经执行过的数据库迁移文件；数据库变更新增 `db/migration_vN.sql`，
-  并同步 `scripts/migrate.py`。
-- 反馈、权限和审计接口必须有回归测试；前端脚本修改后运行 `node --check`。
-- 前端交互不得使用浏览器原生 `alert`、`confirm`、`prompt`；统一使用
-  `customConfirm`、`customForm` 和自定义模态卡片。
+1. `docs/01-产品蓝图.md`
+2. `docs/02-系统架构.md`
+3. `docs/03-开发任务与进度.md`
 
-## 每次更新的固定流程
+## 产品约束
 
-每次修改仓库内容都必须完成以下步骤，不能只留在工作区：
+- 价值发生在客户交互现场，优先完善销售工作台和真实业务流程。
+- 事实知识、回答规则和 AI 生成严格分离，不得让模型编造价格、交期或认证承诺。
+- 每条知识必须有来源、风险级别和发布状态。
+- 所有客户回复必须记录 AI 草稿、人工最终答案、发送状态和修改差异。
+- 老板首页展示可执行事项和业务指标，不堆砌技术指标。
+- 前端不得使用浏览器原生 `alert`、`confirm`、`prompt`，统一使用自定义表单卡片。
 
-1. 运行与改动匹配的测试，并执行：
+## 工程约束
+
+- 保持模块化单体，不提前拆微服务。
+- 路由只负责认证、参数校验和调用服务，业务逻辑放在 `services/`。
+- 不得修改已经执行过的数据库迁移；数据库变化新增
+  `db/migrations/NNN_description.sql`。
+- 一客户一数据库部署模型，新增数据必须带 `organization_id`。
+- 页面使用独立 HTML/CSS/JavaScript 资产，不恢复巨型内联脚本。
+
+## 每次更新流程
+
+每次修改仓库内容都必须：
+
+1. 运行测试和静态检查：
 
    ```bash
-   .venv/bin/python -m pytest -q
-   .venv/bin/python -m compileall -q src scripts tests
+   PYTHONPATH=src .venv/bin/python -m pytest -q
+   PYTHONPATH=src .venv/bin/python -m compileall -q src scripts tests
+   node --check src/knowhow/web/assets/app.js
    git diff --check
    ```
 
-2. 更新 `docs/实现状态与验收记录.md`，写清最新状态、验证结果、限制和下一步。
-3. 按功能提交，使用 Conventional Commits，例如：
-
-   ```bash
-   git add -A
-   git commit -m "feat(feedback): add traceable feedback loop"
-   git push origin HEAD
-   ```
-
-   纯修复使用 `fix(scope): ...`，纯文档使用 `docs(scope): ...`；一个提交只包含
-   一个完整功能或修复，不混入无关改动。
-4. 每次更新都必须 commit 并 push 到 `origin`，不能只提交到本地。
-
-若测试、迁移或推送失败，先修复或明确记录阻塞原因，不得把失败状态描述为完成。
+2. 更新 `docs/03-开发任务与进度.md` 的状态、验证结果和剩余问题。
+3. 按功能使用 Conventional Commits 提交。
+4. 每次更新都 push 到 `origin`。

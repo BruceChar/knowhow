@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Apply database migrations once and record their checksums."""
+"""Apply ordered SQL migrations once and record SHA-256 checksums."""
 from __future__ import annotations
 
 import hashlib
@@ -7,37 +7,15 @@ from pathlib import Path
 
 import psycopg
 
-from src.config import RAG_DSN
+from knowhow.settings import settings
 
 ROOT = Path(__file__).resolve().parent.parent
+MIGRATIONS = ROOT / "db" / "migrations"
 
 
-def _apply(cur, name: str, sql_path: Path) -> bool:
-    sql = sql_path.read_text(encoding="utf-8")
-    checksum = hashlib.sha256(sql.encode("utf-8")).hexdigest()
-    cur.execute(
-        "SELECT checksum FROM schema_migration WHERE name=%s",
-        (name,),
-    )
-    applied = cur.fetchone()
-    if applied:
-        if applied[0] != checksum:
-            raise RuntimeError(
-                f"迁移 {name} 已执行但文件内容发生变化；"
-                "请新增迁移文件，不要修改历史迁移"
-            )
-        return False
-    cur.execute(sql)
-    cur.execute(
-        "INSERT INTO schema_migration(name, checksum) VALUES (%s,%s)",
-        (name, checksum),
-    )
-    return True
-
-
-def main() -> None:
-    applied = []
-    with psycopg.connect(RAG_DSN) as conn, conn.cursor() as cur:
+def apply_migrations() -> list[str]:
+    applied: list[str] = []
+    with psycopg.connect(settings.database_url) as conn, conn.cursor() as cur:
         cur.execute("""
             CREATE TABLE IF NOT EXISTS schema_migration (
               name       TEXT PRIMARY KEY,
@@ -45,20 +23,36 @@ def main() -> None:
               applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
             )
         """)
-        cur.execute("SELECT to_regclass('public.faq')")
-        if cur.fetchone()[0] is None:
-            if _apply(cur, "schema.sql", ROOT / "db" / "schema.sql"):
-                applied.append("schema.sql")
-        for name in (
-            "migration_v2.sql", "migration_v3.sql", "migration_v4.sql",
-            "migration_v5.sql",
-        ):
-            path = ROOT / "db" / name
-            if path.exists() and _apply(cur, name, path):
-                applied.append(name)
+        for path in sorted(MIGRATIONS.glob("*.sql")):
+            sql = path.read_text(encoding="utf-8")
+            checksum = hashlib.sha256(sql.encode("utf-8")).hexdigest()
+            cur.execute(
+                "SELECT checksum FROM schema_migration WHERE name=%s",
+                (path.name,),
+            )
+            record = cur.fetchone()
+            if record:
+                if record[0] != checksum:
+                    raise RuntimeError(
+                        f"Migration {path.name} changed after being applied. "
+                        "Add a new migration instead."
+                    )
+                continue
+            cur.execute(sql)
+            cur.execute(
+                "INSERT INTO schema_migration(name, checksum) VALUES (%s,%s)",
+                (path.name, checksum),
+            )
+            applied.append(path.name)
         conn.commit()
+    return applied
+
+
+def main() -> None:
+    applied = apply_migrations()
     print("migrations applied: " + (", ".join(applied) if applied else "none pending"))
 
 
 if __name__ == "__main__":
     main()
+

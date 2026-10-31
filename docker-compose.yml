@@ -1,40 +1,35 @@
 services:
   db:
-    image: pgvector/pgvector:pg18
-    container_name: rag_db
+    image: pgvector/pgvector:pg17
     environment:
-      POSTGRES_USER: rag
-      POSTGRES_PASSWORD: rag_dev_2026
-      POSTGRES_DB: rag
+      POSTGRES_USER: knowhow
+      POSTGRES_PASSWORD: knowhow_dev
+      POSTGRES_DB: knowhow
     ports:
-      - "5433:5432"          # 本机 5432 已被原生 PostgreSQL 占用，改用 5433
+      - "5433:5432"
     volumes:
-      - pgdata:/var/lib/postgresql    # PG18+ 要求挂载该目录（数据落在子目录）
+      - knowhow_pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U rag -d rag"]
+      test: ["CMD-SHELL", "pg_isready -U knowhow -d knowhow"]
       interval: 5s
       timeout: 3s
       retries: 10
 
-  api:
+  app:
     build: .
-    container_name: rag_api
     ports:
       - "8000:8000"
     environment:
-      DATABASE_URL: postgresql://rag:rag_dev_2026@db:5432/rag
-      RAG_DSN: postgresql://rag:rag_dev_2026@db:5432/rag
-      EMBEDDING_MODEL: bge-m3
-      LLM_BASE_URL: https://api.deepseek.com/v1   # 模型中立，可替换
-      LLM_API_KEY: ${LLM_API_KEY}
-      LLM_MODEL: deepseek-chat
-      KNOWHOW_SECRET: ${KNOWHOW_SECRET}
-      KNOWHOW_PROD: ${KNOWHOW_PROD:-1}
+      KNOWHOW_DATABASE_URL: postgresql://knowhow:knowhow_dev@db:5432/knowhow
+      KNOWHOW_SECRET: ${KNOWHOW_SECRET:-change-me-before-production}
+      KNOWHOW_COOKIE_SECURE: ${KNOWHOW_COOKIE_SECURE:-0}
+      KNOWHOW_LLM_BASE_URL: ${KNOWHOW_LLM_BASE_URL:-}
+      KNOWHOW_LLM_API_KEY: ${KNOWHOW_LLM_API_KEY:-}
+      KNOWHOW_LLM_MODEL: ${KNOWHOW_LLM_MODEL:-}
     depends_on:
       db:
         condition: service_healthy
-    volumes:
-      - ./data:/app/data     # 证据文件挂载
 
 volumes:
-  pgdata:
+  knowhow_pgdata:
+
