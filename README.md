@@ -74,6 +74,7 @@ legacy/v1/        已冻结的 V1 源码
 - [产品蓝图](docs/01-产品蓝图.md)
 - [系统架构](docs/02-系统架构.md)
 - [开发任务与进度](docs/03-开发任务与进度.md)
+- [WhatsApp 渠道与询盘 CRM](docs/07-WhatsApp渠道与询盘CRM.md)
 
 ## 测试
 
