@@ -82,3 +82,14 @@ legacy/v1/        已冻结的 V1 源码
 uv run pytest -q
 ```
 
+## V1 数据迁移
+
+从已有 V1 备份迁移 FAQ、SKU 和产品规格到当前 V2：
+
+```bash
+PYTHONPATH=src .venv/bin/python scripts/import_v1_backup.py
+```
+
+脚本要求源 V1 数据库可通过 `--source-url` 访问，并默认把数据写入当前
+`KNOWHOW_DATABASE_URL`。迁移前请先用 `scripts/backup.sh` 备份目标数据库。
+

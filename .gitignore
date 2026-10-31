@@ -16,3 +16,4 @@ data/goldset/*.local.json
 .env
 _shots/
 data/uploads/
+data/backups/*.dump.gz
