@@ -41,6 +41,22 @@
     </div>
   </section>
 
+  <section class="auth-shell" id="join-view" hidden>
+    <div class="auth-card compact">
+      <div class="brand-mark">K</div>
+      <p class="eyebrow">团队邀请</p>
+      <h1>加入公司知识工作台</h1>
+      <p class="muted" id="join-invite-info">正在读取邀请信息…</p>
+      <form id="join-form" class="form-stack">
+        <label>姓名<input name="display_name" required maxlength="80"></label>
+        <label>登录名<input name="username" required minlength="3" maxlength="80" placeholder="字母、数字、点、横线"></label>
+        <label>设置密码<input name="password" type="password" required minlength="8"></label>
+        <div class="form-error" id="join-error"></div>
+        <button class="button primary wide" type="submit">接受邀请并进入</button>
+      </form>
+    </div>
+  </section>
+
   <div class="app-shell" id="app-view" hidden>
     <aside class="sidebar">
       <div class="brand">
@@ -52,8 +68,9 @@
         <button data-page="ask"><span>02</span>销售工作台</button>
         <button data-page="knowledge"><span>03</span>公司知识</button>
         <button data-page="review"><span>04</span>待处理</button>
-        <button data-page="team"><span>05</span>团队</button>
-        <button data-page="training"><span>06</span>新人训练</button>
+        <button data-page="facts"><span>05</span>产品报价</button>
+        <button data-page="team"><span>06</span>团队</button>
+        <button data-page="training"><span>07</span>新人训练</button>
       </nav>
       <div class="sidebar-foot">
         <div id="user-label"></div>
@@ -181,10 +198,18 @@
             <div><p class="eyebrow">TEAM</p><h2>团队账户</h2></div>
             <div class="button-row">
               <button class="button ghost" id="new-team-button">新建团队</button>
+              <button class="button ghost" id="invite-member-button">邀请成员</button>
+              <button class="button ghost" id="lan-info-button">局域网分享</button>
               <button class="button primary" id="new-account-button">添加成员</button>
             </div>
           </div>
-          <p class="muted">默认角色：老板、知识负责人、业务员。复杂权限留到确有需要时再配置。</p>
+          <div class="help-strip">
+            <strong>三个概念不要混：</strong>
+            <span><b>团队</b>决定和谁共享团队知识，例如“宠物用品一组”；<b>角色</b>决定能做什么，例如业务员可以提问但不能发布；<b>知识可见范围</b>决定每条知识给公司、团队还是个人看。</span>
+          </div>
+          <div class="panel-head" style="margin-top:16px;"><h3>团队列表</h3><span class="muted small">团队可以设置统一默认角色</span></div>
+          <div id="team-overview" class="team-list"></div>
+          <div class="panel-head" style="margin-top:22px;"><h3>成员列表</h3></div>
           <div id="team-list" class="team-list"></div>
         </div>
         <div class="panel" id="role-panel">
@@ -192,8 +217,28 @@
             <div><p class="eyebrow">ACCESS CONTROL</p><h2>角色与权限</h2></div>
             <button class="button ghost" id="new-role-button">新建角色</button>
           </div>
-          <p class="muted">先使用默认角色；需要产品线、财务或客服主管等差异时，再创建自定义角色。</p>
+          <div class="help-strip">
+            <strong>角色名称给老板看，系统编码自动生成。</strong>
+            <span>示例：角色名称填“宠物用品业务员”，权限勾选“使用销售问答、查看知识、提交知识草稿”。他只能看到公司知识、所属团队知识和自己提交的私有知识。</span>
+          </div>
           <div id="role-list" class="role-list"></div>
+        </div>
+      </section>
+
+      <section class="page" id="page-facts">
+        <div class="panel">
+          <div class="panel-head">
+            <div><p class="eyebrow">FACTS</p><h2>产品与已发布报价</h2></div>
+            <div class="button-row">
+              <button class="button ghost" id="facts-import-button">导入报价 CSV</button>
+              <input type="file" id="facts-file-input" accept=".csv" hidden>
+            </div>
+          </div>
+          <div class="help-strip">
+            <strong>价格和交期不能由 AI 猜。</strong>
+            <span>CSV 至少包含 sku、name、unit_price、valid_until；可选 currency、variant_code、moq、lead_time_days。导入后立即成为当前有效报价，同变体旧报价自动过期。</span>
+          </div>
+          <div id="facts-list" class="knowledge-list" style="margin-top:16px;"></div>
         </div>
       </section>
 

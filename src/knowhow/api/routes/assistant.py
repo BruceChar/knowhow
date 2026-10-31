@@ -22,6 +22,12 @@ class InteractionUpdateBody(BaseModel):
     status: Literal["draft", "copied", "sent", "escalated"]
 
 
+class OutcomeBody(BaseModel):
+    outcome: Literal["unknown", "following", "won", "lost"]
+    value: float | None = Field(default=None, ge=0)
+    note: str = Field(default="", max_length=2000)
+
+
 @router.post("/api/ask")
 def ask(body: AskBody, user: dict = Depends(require_permission("ask.use"))):
     return assistant.answer_question(
@@ -43,4 +49,21 @@ def update_interaction(
         )
     except LookupError as exc:
         raise HTTPException(404, str(exc)) from exc
+
+
+@router.put("/api/interactions/{interaction_id}/outcome")
+def update_interaction_outcome(
+    interaction_id: int,
+    body: OutcomeBody,
+    user: dict = Depends(require_permission("ask.use")),
+):
+    try:
+        return assistant.update_outcome(
+            user["organization_id"], user["id"], interaction_id,
+            outcome=body.outcome, value=body.value, note=body.note.strip(),
+        )
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
 

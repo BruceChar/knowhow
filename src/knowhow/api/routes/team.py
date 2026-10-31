@@ -25,7 +25,7 @@ class EnabledBody(BaseModel):
 
 
 class RoleBody(BaseModel):
-    code: str = Field(min_length=2, max_length=50, pattern=r"^[a-z][a-z0-9_]*$")
+    code: str = Field(default="", max_length=50)
     name: str = Field(min_length=1, max_length=80)
     permissions: list[str] = Field(default_factory=list)
 
@@ -36,10 +36,15 @@ class RolePermissionsBody(BaseModel):
 
 class TeamBody(BaseModel):
     name: str = Field(min_length=1, max_length=80)
+    default_role_id: int | None = None
 
 
 class AccountTeamsBody(BaseModel):
     team_ids: list[int]
+
+
+class TeamRoleBody(BaseModel):
+    role_id: int
 
 
 @router.get("/api/team")
@@ -120,17 +125,51 @@ def list_my_teams(user: dict = Depends(current_account)):
     }
 
 
+@router.get("/api/teams/all")
+def list_all_teams(user: dict = Depends(require_permission("team.manage"))):
+    return {"items": team.list_teams(user["organization_id"])}
+
+
 @router.post("/api/teams")
 def create_team(
     body: TeamBody,
     user: dict = Depends(require_permission("team.manage")),
 ):
     try:
-        return team.create_team(user["organization_id"], body.name)
+        return team.create_team(
+            user["organization_id"], body.name, body.default_role_id,
+        )
     except Exception as exc:
         if "duplicate key" in str(exc).lower():
             raise HTTPException(409, "团队名称已存在") from exc
         raise
+
+
+@router.put("/api/teams/{team_id}/default-role")
+def update_team_default_role(
+    team_id: int,
+    body: TeamRoleBody,
+    user: dict = Depends(require_permission("team.manage")),
+):
+    try:
+        return team.update_team_default_role(
+            user["organization_id"], team_id, body.role_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.post("/api/teams/{team_id}/apply-role")
+def apply_team_default_role(
+    team_id: int,
+    user: dict = Depends(require_permission("team.manage")),
+):
+    try:
+        return team.apply_team_default_role(
+            user["organization_id"], team_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
 
 
 @router.put("/api/team/{account_id}/teams")

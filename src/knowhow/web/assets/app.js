@@ -17,6 +17,7 @@ const pageMeta = {
   review: ["REVIEW INBOX", "待处理"],
   team: ["TEAM", "团队"],
   training: ["READINESS", "新人训练"],
+  facts: ["FACTS", "产品报价"],
 };
 
 const kindLabels = {
@@ -56,6 +57,8 @@ const permissionLabels = {
   "role.manage": "管理角色权限",
   "data.all": "查看全部团队数据",
   "training.use": "使用新人训练",
+  "facts.view": "查看产品与报价事实",
+  "facts.manage": "导入和管理产品报价",
 };
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -98,6 +101,11 @@ function showToast(message, error = false) {
 }
 
 async function boot() {
+  const inviteToken = new URLSearchParams(window.location.search).get("token");
+  if (window.location.pathname === "/join" && inviteToken) {
+    await loadJoinInvite(inviteToken);
+    return;
+  }
   const bootstrap = await api("/api/bootstrap");
   if (bootstrap.setup_required) {
     $("#setup-view").hidden = false;
@@ -108,6 +116,21 @@ async function boot() {
     enterApp(result.user);
   } catch (_) {
     showLogin();
+  }
+}
+
+async function loadJoinInvite(token) {
+  $("#setup-view").hidden = true;
+  $("#login-view").hidden = true;
+  $("#app-view").hidden = true;
+  $("#join-view").hidden = false;
+  try {
+    const invite = await api(`/api/invites/${encodeURIComponent(token)}`);
+    $("#join-invite-info").textContent = `${invite.organization_name} · ${invite.team_name} · ${invite.role_name}`;
+    $("#join-form").dataset.token = token;
+  } catch (error) {
+    $("#join-invite-info").textContent = error.message;
+    $("#join-form").hidden = true;
   }
 }
 
@@ -136,6 +159,8 @@ function configureNavigation() {
   $('[data-page="today"]').hidden = !hasPermission("dashboard.view");
   $('[data-page="team"]').hidden = !hasPermission("team.manage");
   $('[data-page="training"]').hidden = !hasPermission("training.use");
+  $('[data-page="facts"]').hidden = !hasPermission("facts.view");
+  $("#facts-import-button").hidden = !hasPermission("facts.manage");
   $("#role-panel").hidden = !hasPermission("role.manage");
 }
 
@@ -161,6 +186,7 @@ async function showPage(name) {
   if (name === "review") await loadGaps();
   if (name === "team") await loadTeam();
   if (name === "training") await loadTraining();
+  if (name === "facts") await loadFacts();
 }
 
 async function loadDashboard() {
@@ -183,6 +209,7 @@ function renderDashboard(data) {
     [`${metrics.draft_acceptance}%`, "草稿低修改采用"],
     [metrics.expiring, "14 天内到期"],
     [metrics.training_score, "训练平均分"],
+    [metrics.won_30d, "30 天成交"],
   ].map(([value, label]) => `
     <div class="metric-card"><strong>${esc(value)}</strong><span>${esc(label)}</span></div>
   `).join("");
@@ -247,12 +274,37 @@ function renderAnswer(data) {
       ${data.citations.map(item => `<span class="citation">#${item.id} ${esc(item.title)}</span>`).join("") || '<span class="muted small">当前没有可引用知识</span>'}
     </div>
     <div class="answer-actions">
+      <select id="outcome-select">
+        <option value="unknown">客户结果</option>
+        <option value="following">持续跟进</option>
+        <option value="won">已成交</option>
+        <option value="lost">已丢单</option>
+      </select>
+      <button class="button ghost" id="save-outcome-button">保存结果</button>
       <button class="button ghost" id="save-copy-button">复制并记录</button>
       <button class="button primary" id="mark-sent-button">标记已发送</button>
     </div>
   `;
   $("#save-copy-button").addEventListener("click", () => saveInteraction("copied", true));
   $("#mark-sent-button").addEventListener("click", () => saveInteraction("sent", false));
+  $("#save-outcome-button").addEventListener("click", saveOutcome);
+}
+
+async function saveOutcome() {
+  if (!state.lastInteraction) return;
+  try {
+    await api(`/api/interactions/${state.lastInteraction.interaction_id}/outcome`, {
+      method: "PUT",
+      body: JSON.stringify({
+        outcome: $("#outcome-select").value,
+        value: null,
+        note: "",
+      }),
+    });
+    showToast("客户结果已记录");
+  } catch (error) {
+    showToast(error.message, true);
+  }
 }
 
 async function saveInteraction(status, copy) {
@@ -539,17 +591,32 @@ async function ignoreGap(id) {
 
 async function loadTeam() {
   try {
-    const requests = [api("/api/team"), api("/api/teams")];
+    const requests = [api("/api/team"), api("/api/teams/all")];
     if (hasPermission("role.manage")) requests.push(api("/api/roles"));
     const [data, teams, roles] = await Promise.all(requests);
     state.team = data.items;
     state.teams = teams.items;
     state.roles = roles?.items || [];
+    renderTeams();
     renderTeam();
     renderRoles();
   } catch (error) {
     showToast(error.message, true);
   }
+}
+
+function renderTeams() {
+  $("#team-overview").innerHTML = state.teams.map(team => `
+    <article class="team-item">
+      <div><strong>${esc(team.name)}</strong><p class="muted small">${team.member_count} 名成员 · 默认角色：${esc(team.default_role_name || "未设置")}</p></div>
+      <div class="button-row">
+        <button class="button ghost set-team-role" data-id="${team.id}">设置默认角色</button>
+        <button class="button ghost apply-team-role" data-id="${team.id}">统一应用到组员</button>
+      </div>
+    </article>
+  `).join("") || '<p class="muted small">暂无团队。</p>';
+  $$(".set-team-role").forEach(button => button.addEventListener("click", () => editTeamRole(Number(button.dataset.id))));
+  $$(".apply-team-role").forEach(button => button.addEventListener("click", () => applyTeamRole(Number(button.dataset.id))));
 }
 
 function renderTeam() {
@@ -609,16 +676,65 @@ async function createAccount() {
 }
 
 async function createTeam() {
+  if (!state.roles.length) await loadTeam();
   const result = await openDialog({
     title: "新建团队",
-    description: "团队用于隔离不同产品线、区域或业务小组的知识。",
-    fields: [{ name: "name", label: "团队名称", required: true, placeholder: "例如：宠物用品组" }],
+    description: "团队是一个共享边界。示例：把北美客户业务员放在“北美组”，他们能看到北美组的团队知识，但看不到欧洲组。",
+    fields: [
+      { name: "name", label: "团队名称", required: true, placeholder: "例如：宠物用品组" },
+      { name: "default_role_id", label: "团队默认角色", type: "select", value: String(state.roles.find(role => role.code === "sales")?.id || ""), options: state.roles.filter(role => role.code !== "owner").map(role => ({ value: String(role.id), label: role.name })) },
+    ],
     submitText: "创建团队",
   });
   if (!result) return;
+  result.default_role_id = Number(result.default_role_id);
   try {
     await api("/api/teams", { method: "POST", body: JSON.stringify(result) });
     showToast("团队已创建");
+    await loadTeam();
+  } catch (error) {
+    showToast(error.message, true);
+  }
+}
+
+async function editTeamRole(teamId) {
+  const team = state.teams.find(item => item.id === teamId);
+  if (!team) return;
+  const result = await openDialog({
+    title: `团队默认角色 · ${team.name}`,
+    description: "这里只设置默认值。设置后可以点击“统一应用到组员”，不会自动覆盖老板。",
+    fields: [{
+      name: "role_id", label: "默认角色", type: "select",
+      value: String(team.default_role_id || ""),
+      options: state.roles.filter(role => role.code !== "owner").map(role => ({ value: String(role.id), label: role.name })),
+    }],
+    submitText: "保存默认角色",
+  });
+  if (!result) return;
+  result.role_id = Number(result.role_id);
+  try {
+    await api(`/api/teams/${teamId}/default-role`, {
+      method: "PUT", body: JSON.stringify(result),
+    });
+    showToast("团队默认角色已更新");
+    await loadTeam();
+  } catch (error) {
+    showToast(error.message, true);
+  }
+}
+
+async function applyTeamRole(teamId) {
+  const team = state.teams.find(item => item.id === teamId);
+  if (!team) return;
+  const confirmed = await openConfirm(
+    "统一团队成员角色",
+    `将“${team.name}”所有非老板成员的权限统一改为“${team.default_role_name || "默认角色"}”。成员需要重新登录，是否继续？`,
+    "统一角色",
+  );
+  if (!confirmed) return;
+  try {
+    const result = await api(`/api/teams/${teamId}/apply-role`, { method: "POST" });
+    showToast(`已更新 ${result.updated} 名成员`);
     await loadTeam();
   } catch (error) {
     showToast(error.message, true);
@@ -652,6 +768,89 @@ async function editAccountTeams(accountId) {
   }
 }
 
+async function showLanInfo() {
+  try {
+    const info = await api("/api/runtime/info");
+    await showShareCard({
+      title: "局域网分享",
+      description: "把二维码或地址发给同一局域网内的同事。员工仍需账号密码登录。",
+      url: info.base_url,
+      qrSvg: info.qr_svg,
+    });
+  } catch (error) {
+    showToast(error.message, true);
+  }
+}
+
+async function inviteMember() {
+  if (!state.roles.length || !state.teams.length) await loadTeam();
+  const result = await openDialog({
+    title: "邀请成员",
+    description: "邀请链接一次有效。成员打开后只需填写姓名、登录名和密码，不需要理解角色编码。",
+    fields: [
+      { name: "team_id", label: "加入团队", type: "select", value: String(state.teams[0]?.id || ""), options: state.teams.map(team => ({ value: String(team.id), label: team.name })) },
+      { name: "role_id", label: "团队角色", type: "select", value: String(state.teams[0]?.default_role_id || state.roles.find(role => role.code === "sales")?.id || ""), options: state.roles.filter(role => role.code !== "owner").map(role => ({ value: String(role.id), label: role.name })) },
+      { name: "expires_hours", label: "有效期（小时）", inputType: "number", value: "72", required: true },
+    ],
+    submitText: "生成邀请",
+  });
+  if (!result) return;
+  result.team_id = Number(result.team_id);
+  result.role_id = Number(result.role_id);
+  result.expires_hours = Number(result.expires_hours);
+  try {
+    const invite = await api("/api/invites", {
+      method: "POST", body: JSON.stringify(result),
+    });
+    await showShareCard({
+      title: "发送团队邀请",
+      description: `${invite.organization_name} · ${invite.team_name} · ${invite.role_name}\n链接一次有效，过期或使用后失效。`,
+      url: invite.url,
+      qrSvg: invite.qr_svg,
+    });
+  } catch (error) {
+    showToast(error.message, true);
+  }
+}
+
+function copyText(text) {
+  if (navigator.clipboard && window.isSecureContext) {
+    return navigator.clipboard.writeText(text);
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand("copy");
+  textarea.remove();
+  return Promise.resolve();
+}
+
+function showShareCard({ title, description, url, qrSvg }) {
+  return openDialog({
+    title,
+    description,
+    fields: [],
+    submitText: "关闭",
+    bodyHtml: `
+      <div class="invite-box">
+        ${qrSvg}
+        <div class="invite-url" id="share-url">${esc(url)}</div>
+        <div class="button-row" style="justify-content:center;margin-top:10px;">
+          <button class="button ghost" type="button" id="copy-share-url">复制链接</button>
+        </div>
+      </div>`,
+    afterRender: () => {
+      $("#copy-share-url").onclick = async () => {
+        await copyText(url);
+        showToast("链接已复制");
+      };
+    },
+  });
+}
+
 function renderRoles() {
   if (!hasPermission("role.manage")) return;
   $("#role-list").innerHTML = state.roles.map(role => `
@@ -671,10 +870,9 @@ function renderRoles() {
 async function createRole() {
   const result = await openDialog({
     title: "新建角色",
-    description: "角色用于业务差异，不要求老板理解技术权限模型。",
+    description: "角色决定“能做什么”，不决定“能看哪条知识”。\n示例：业务员可以提问和提交草稿，但不能发布；知识负责人可以编辑和发布。\n系统会自动生成内部编码，无需填写。",
     fields: [
       { name: "name", label: "角色名称", required: true, placeholder: "例如：宠物用品业务员" },
-      { name: "code", label: "角色编码", required: true, pattern: "^[a-z][a-z0-9_]*$", error: "需以小写字母开头，仅支持小写字母、数字和下划线" },
       { name: "permissions", label: "权限", type: "multiselect", value: ["ask.use", "knowledge.view", "knowledge.suggest"], options: Object.entries(permissionLabels).map(([value, label]) => ({ value, label })) },
     ],
     submitText: "创建角色",
@@ -782,6 +980,51 @@ async function submitTraining(index, knowledgeId) {
   }
 }
 
+async function loadFacts() {
+  try {
+    const data = await api("/api/facts");
+    $("#facts-list").innerHTML = data.items.map(item => `
+      <article class="knowledge-item">
+        <div class="kind-label">${esc(item.category || "产品")}</div>
+        <div><h4>${esc(item.name)} · ${esc(item.sku)}</h4><p>${item.variants} 个变体 · ${item.active_offers} 个有效报价 · ${esc(item.status)}</p></div>
+        <span class="pill">${item.active_offers ? "可用于客服" : "缺少报价"}</span>
+      </article>
+    `).join("") || '<p class="muted">还没有产品报价。导入 CSV 后，价格类问题会优先使用这些事实。</p>';
+  } catch (error) {
+    showToast(error.message, true);
+  }
+}
+
+async function importFacts(file) {
+  const form = new FormData();
+  form.append("file", file);
+  try {
+    const response = await fetch("/api/facts/import", {
+      method: "POST",
+      headers: { "X-Knowhow-CSRF": "1" },
+      body: form,
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.detail || "报价导入失败");
+    const issueText = result.errors.slice(0, 5)
+      .map(issue => `第 ${issue.row} 行：${issue.error}`).join("\n");
+    showToast(`已导入 ${result.imported} 条报价`);
+    if (issueText) {
+      await openDialog({
+        title: "部分行未导入",
+        description: issueText,
+        fields: [],
+        submitText: "关闭",
+      });
+    }
+    await loadFacts();
+  } catch (error) {
+    showToast(error.message, true);
+  } finally {
+    $("#facts-file-input").value = "";
+  }
+}
+
 async function changePassword() {
   const result = await openDialog({
     title: "修改密码",
@@ -814,7 +1057,10 @@ function openConfirm(title, description, confirmText = "确认") {
   }).then(value => Boolean(value));
 }
 
-function openDialog({ title, description = "", fields = [], submitText = "保存", danger = false }) {
+function openDialog({
+  title, description = "", fields = [], submitText = "保存", danger = false,
+  bodyHtml = "", afterRender = null,
+}) {
   return new Promise(resolve => {
     const root = $("#modal-root");
     let finished = false;
@@ -835,6 +1081,7 @@ function openDialog({ title, description = "", fields = [], submitText = "保存
       <div class="dialog-card" role="dialog" aria-modal="true">
         <h2>${esc(title)}</h2>
         ${description ? `<p class="muted">${esc(description)}</p>` : ""}
+        ${bodyHtml}
         <form class="dialog-form" id="dialog-form">
           ${fields.map((field, index) => dialogField(field, index)).join("")}
           <div class="dialog-error" id="dialog-error"></div>
@@ -878,6 +1125,7 @@ function openDialog({ title, description = "", fields = [], submitText = "保存
     };
     const first = $("#dialog-form input, #dialog-form textarea, #dialog-form select");
     if (first) first.focus();
+    if (afterRender) afterRender();
   });
 }
 
@@ -934,6 +1182,24 @@ $("#login-form").addEventListener("submit", async event => {
   }
 });
 
+$("#join-form").addEventListener("submit", async event => {
+  event.preventDefault();
+  const token = event.currentTarget.dataset.token;
+  if (!token) return;
+  const form = Object.fromEntries(new FormData(event.currentTarget).entries());
+  try {
+    const result = await api(`/api/invites/${encodeURIComponent(token)}/accept`, {
+      method: "POST", body: JSON.stringify(form),
+    });
+    window.history.replaceState({}, "", "/");
+    enterApp(result.user);
+  } catch (error) {
+    const box = $("#join-error");
+    box.textContent = error.message;
+    box.style.display = "block";
+  }
+});
+
 $$(".nav button").forEach(button => button.addEventListener("click", () => showPage(button.dataset.page)));
 $("#mobile-menu").addEventListener("click", () => $(".sidebar").classList.toggle("open"));
 $("#logout-button").addEventListener("click", async () => {
@@ -957,7 +1223,14 @@ $("#import-file-input").addEventListener("change", event => {
 $("#gap-status").addEventListener("change", loadGaps);
 $("#new-account-button").addEventListener("click", createAccount);
 $("#new-team-button").addEventListener("click", createTeam);
+$("#lan-info-button").addEventListener("click", showLanInfo);
+$("#invite-member-button").addEventListener("click", inviteMember);
 $("#reload-quiz-button").addEventListener("click", loadTraining);
+$("#facts-import-button").addEventListener("click", () => $("#facts-file-input").click());
+$("#facts-file-input").addEventListener("change", event => {
+  const file = event.target.files?.[0];
+  if (file) importFacts(file);
+});
 $("#new-role-button").addEventListener("click", createRole);
 
 boot();

@@ -26,10 +26,21 @@ services:
       KNOWHOW_LLM_BASE_URL: ${KNOWHOW_LLM_BASE_URL:-}
       KNOWHOW_LLM_API_KEY: ${KNOWHOW_LLM_API_KEY:-}
       KNOWHOW_LLM_MODEL: ${KNOWHOW_LLM_MODEL:-}
+      HF_HUB_OFFLINE: "1"
+      HF_HOME: /app/models
     depends_on:
       db:
         condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - knowhow_models:/app/models
 
 volumes:
   knowhow_pgdata:
+  knowhow_models:
 

@@ -12,7 +12,8 @@ from fastapi.staticfiles import StaticFiles
 
 from knowhow.api.deps import SESSION_COOKIE
 from knowhow.api.routes import (
-    assistant, auth, dashboard, imports, knowledge, team, training,
+    assistant, auth, dashboard, facts, imports, invitations, knowledge, team,
+    training,
 )
 from knowhow.settings import settings
 
@@ -42,6 +43,11 @@ def index():
     return FileResponse(str(WEB_DIR / "index.html"))
 
 
+@app.get("/join", include_in_schema=False)
+def join_page():
+    return FileResponse(str(WEB_DIR / "index.html"))
+
+
 @app.get("/health")
 def health():
     database = "ok"
@@ -58,7 +64,10 @@ def health():
     }
 
 
-for module in (auth, dashboard, knowledge, imports, assistant, team, training):
+for module in (
+    auth, dashboard, knowledge, imports, assistant, team, training, invitations,
+    facts,
+):
     app.include_router(module.router)
 
 

@@ -26,6 +26,13 @@ def test_expected_v2_routes_are_registered():
         "/api/teams",
         "/api/roles",
         "/api/training/quiz",
+        "/api/runtime/info",
+        "/api/teams/all",
+        "/api/teams/{team_id}/apply-role",
+        "/api/facts",
+        "/api/facts/import",
+        "/api/invites",
+        "/api/invites/{token}",
     ):
         assert path in paths
 
@@ -44,4 +51,10 @@ def test_index_page_is_served():
     response = TestClient(app).get("/")
     assert response.status_code == 200
     assert "建立公司的销售知识工作台" in response.text
+
+
+def test_invitation_join_page_is_served():
+    response = TestClient(app).get("/join?token=example")
+    assert response.status_code == 200
+    assert "团队邀请" in response.text
 

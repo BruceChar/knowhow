@@ -103,8 +103,11 @@ def setup(body: SetupBody, response: Response):
         )
         account = cur.fetchone()
         cur.execute(
-            "INSERT INTO team(organization_id,name) VALUES (%s,'销售部') RETURNING id",
-            (organization["id"],),
+            """
+            INSERT INTO team(organization_id,name,default_role_id)
+            VALUES (%s,'销售部',%s) RETURNING id
+            """,
+            (organization["id"], role_ids["sales"]),
         )
         team_id = cur.fetchone()["id"]
         cur.execute(

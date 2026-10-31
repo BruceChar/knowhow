@@ -8,11 +8,14 @@ from openai import OpenAI
 from knowhow.db import connect
 from knowhow.domain import (
     AnswerDecision,
+    DYNAMIC_FACT_TERMS,
+    HIGH_RISK_TERMS,
     answer_decision,
     detect_language,
     language_mismatch,
 )
 from knowhow.services.retrieval import retrieve_with_meta
+from knowhow.services.facts import lookup_facts
 from knowhow.settings import settings
 
 
@@ -72,6 +75,28 @@ def _draft(question: str, knowledge: list[dict], rules: list[str]) -> tuple[str,
     return response.choices[0].message.content.strip(), settings.llm_model
 
 
+def _fact_answer(rows: list[dict]) -> str:
+    parts = []
+    for row in rows:
+        suffix = f"（{row['variant_name']}）" if row["variant_name"] else ""
+        line = (
+            f"{row['name']} {row['sku']}{suffix}："
+            f"{row['currency']} {row['unit_price']}"
+        )
+        extras = []
+        if row["moq"]:
+            extras.append(f"MOQ {row['moq']}")
+        if row["lead_time_days"]:
+            extras.append(f"交期 {row['lead_time_days']} 天")
+        if row["valid_until"]:
+            extras.append(f"有效期至 {row['valid_until']}")
+        if extras:
+            line += "；" + "；".join(extras)
+        parts.append(line)
+    parts.append("以上来自已发布产品报价，发送客户前请业务员确认。")
+    return "\n".join(parts)
+
+
 def answer_question(
     organization_id: int,
     account_id: int,
@@ -83,6 +108,13 @@ def answer_question(
         organization_id, account_id, question,
     )
     decision = answer_decision(question, knowledge)
+    fact_rows = lookup_facts(organization_id, question) if any(
+        term in question.lower() for term in DYNAMIC_FACT_TERMS
+    ) else []
+    if fact_rows and not any(term in question.lower() for term in HIGH_RISK_TERMS):
+        decision = AnswerDecision(
+            "draft", "价格和交期来自已发布产品事实，发送前需业务员确认", "medium",
+        )
     answer = ""
     model = "none"
     citations = [
@@ -94,7 +126,13 @@ def answer_question(
         }
         for item in knowledge
     ]
-    if knowledge and decision.status != "escalated":
+    if fact_rows and decision.status != "escalated":
+        answer = _fact_answer(fact_rows)
+        model = "approved-fact-template"
+        decision = AnswerDecision(
+            "draft", "价格和交期来自已发布产品事实，发送前需业务员确认", "medium",
+        )
+    elif knowledge and decision.status != "escalated":
         rules = _active_rules(organization_id)
         answer, model = _draft(question, knowledge, rules)
         if language_mismatch(question, answer):
@@ -146,6 +184,7 @@ def answer_question(
         "risk": decision.risk,
         "model": model,
         "citations": citations,
+        "facts": fact_rows,
         "retrieval": retrieval_meta,
     }
 
@@ -197,6 +236,38 @@ def update_interaction(
                     interaction_id,
                 ),
             )
+        conn.commit()
+    return result
+
+
+def update_outcome(
+    organization_id: int,
+    account_id: int,
+    interaction_id: int,
+    *,
+    outcome: str,
+    value: float | None,
+    note: str,
+) -> dict:
+    if outcome not in {"unknown", "following", "won", "lost"}:
+        raise ValueError("客户结果不支持")
+    with connect() as conn, conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE interaction
+            SET outcome=%s,outcome_value=%s,outcome_note=%s,
+                outcome_updated_at=now(),updated_at=now()
+            WHERE id=%s AND organization_id=%s AND account_id=%s
+            RETURNING id,outcome,outcome_value,outcome_note,outcome_updated_at
+            """,
+            (
+                outcome, value, note, interaction_id, organization_id,
+                account_id,
+            ),
+        )
+        result = cur.fetchone()
+        if not result:
+            raise LookupError("交互记录不存在")
         conn.commit()
     return result
 

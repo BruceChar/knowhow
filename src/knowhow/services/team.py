@@ -1,9 +1,18 @@
 """Small-team account management."""
 from __future__ import annotations
 
+import re
+import secrets
+
 from knowhow.db import connect
 from knowhow.security import hash_password
 from knowhow.access import valid_permissions
+
+
+def generate_role_code(name: str) -> str:
+    code = re.sub(r"[^a-z0-9]+", "_", name.strip().lower()).strip("_")
+    code = code[:32] or f"custom_{secrets.token_hex(4)}"
+    return f"role_{code}" if code[0].isdigit() else code
 
 
 def list_accounts(organization_id: int) -> list[dict]:
@@ -126,6 +135,9 @@ def create_role(
     name: str,
     permissions: list[str],
 ) -> dict:
+    code = (code or "").strip().lower()
+    if not code:
+        code = generate_role_code(name)
     if code in {"owner", "admin", "steward", "sales"}:
         raise ValueError("不能覆盖系统内置角色编码")
     with connect() as conn, conn.cursor() as cur:
@@ -169,8 +181,9 @@ def list_teams_for_account(organization_id: int, account_id: int) -> list[dict]:
     with connect() as conn, conn.cursor() as cur:
         cur.execute(
             """
-            SELECT t.id,t.name
+            SELECT t.id,t.name,t.default_role_id,r.name AS default_role_name
             FROM team t JOIN team_member tm ON tm.team_id=t.id
+            LEFT JOIN access_role r ON r.id=t.default_role_id
             WHERE t.organization_id=%s AND tm.account_id=%s
             ORDER BY t.id
             """,
@@ -179,18 +192,118 @@ def list_teams_for_account(organization_id: int, account_id: int) -> list[dict]:
         return cur.fetchall()
 
 
-def create_team(organization_id: int, name: str) -> dict:
+def list_teams(organization_id: int) -> list[dict]:
     with connect() as conn, conn.cursor() as cur:
         cur.execute(
             """
-            INSERT INTO team(organization_id,name) VALUES (%s,%s)
-            RETURNING id,name
+            SELECT t.id,t.name,t.default_role_id,r.name AS default_role_name,
+                   count(tm.account_id)::int AS member_count
+            FROM team t
+            LEFT JOIN access_role r ON r.id=t.default_role_id
+            LEFT JOIN team_member tm ON tm.team_id=t.id
+            WHERE t.organization_id=%s
+            GROUP BY t.id,r.id
+            ORDER BY t.id
             """,
-            (organization_id, name.strip()),
+            (organization_id,),
+        )
+        return cur.fetchall()
+
+
+def create_team(organization_id: int, name: str, default_role_id: int | None = None) -> dict:
+    with connect() as conn, conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT id FROM access_role
+            WHERE organization_id=%s AND code!='owner'
+              AND (%s IS NULL OR id=%s)
+            ORDER BY CASE WHEN code='sales' THEN 0 ELSE 1 END,id
+            LIMIT 1
+            """,
+            (organization_id, default_role_id, default_role_id),
+        )
+        role = cur.fetchone()
+        if not role:
+            raise ValueError("默认角色不存在")
+        cur.execute(
+            """
+            INSERT INTO team(organization_id,name,default_role_id)
+            VALUES (%s,%s,%s)
+            RETURNING id,name,default_role_id
+            """,
+            (organization_id, name.strip(), role["id"]),
         )
         row = cur.fetchone()
         conn.commit()
     return row
+
+
+def update_team_default_role(
+    organization_id: int,
+    team_id: int,
+    role_id: int,
+) -> dict:
+    with connect() as conn, conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE team SET default_role_id=%s
+            WHERE id=%s AND organization_id=%s
+              AND EXISTS (
+                SELECT 1 FROM access_role
+                WHERE id=%s AND organization_id=%s AND code!='owner'
+              )
+            RETURNING id,name,default_role_id
+            """,
+            (role_id, team_id, organization_id, role_id, organization_id),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise ValueError("团队或默认角色不存在")
+        conn.commit()
+    return row
+
+
+def apply_team_default_role(organization_id: int, team_id: int) -> dict:
+    with connect() as conn, conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT default_role_id FROM team
+            WHERE id=%s AND organization_id=%s
+            """,
+            (team_id, organization_id),
+        )
+        team = cur.fetchone()
+        if not team or not team["default_role_id"]:
+            raise ValueError("团队未设置默认角色")
+        cur.execute(
+            """
+            SELECT code FROM access_role WHERE id=%s
+            """,
+            (team["default_role_id"],),
+        )
+        role = cur.fetchone()
+        cur.execute(
+            """
+            UPDATE account a
+            SET role_id=%s, role=%s, updated_at=now()
+            FROM team_member tm, access_role cr
+            WHERE tm.team_id=%s AND tm.account_id=a.id
+              AND a.organization_id=%s AND cr.id=a.role_id
+              AND cr.code!='owner'
+            RETURNING a.id
+            """,
+            (
+                team["default_role_id"], role["code"], team_id, organization_id,
+            ),
+        )
+        affected = [row["id"] for row in cur.fetchall()]
+        if affected:
+            cur.execute(
+                "DELETE FROM session WHERE account_id=ANY(%s)",
+                (affected,),
+            )
+        conn.commit()
+    return {"updated": len(affected), "account_ids": affected}
 
 
 def set_account_teams(

@@ -13,6 +13,8 @@ PERMISSIONS = {
     "role.manage": "管理角色权限",
     "data.all": "查看全部团队数据",
     "training.use": "使用新人训练",
+    "facts.view": "查看产品与报价事实",
+    "facts.manage": "导入和管理产品报价",
 }
 
 ROLE_TEMPLATES = {
@@ -31,12 +33,14 @@ ROLE_TEMPLATES = {
             "knowledge.edit", "knowledge.publish", "gap.manage",
             "dashboard.view", "data.all",
             "training.use",
+            "facts.view", "facts.manage",
         ],
     },
     "sales": {
         "name": "业务员",
         "permissions": [
             "ask.use", "knowledge.view", "knowledge.suggest", "training.use",
+            "facts.view",
         ],
     },
 }

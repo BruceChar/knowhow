@@ -25,6 +25,13 @@ uv run knowhow
 
 打开 <http://localhost:8000>，首次使用会进入公司初始化向导。
 
+也可以通过安装脚本完成环境准备、迁移和服务启动：
+
+```bash
+scripts/install.sh
+uv run python scripts/doctor.py
+```
+
 开发模式可跳过登录：
 
 ```dotenv

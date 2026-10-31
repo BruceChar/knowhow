@@ -32,9 +32,17 @@ def dashboard(organization_id: int) -> dict:
                  AND valid_until IS NOT NULL
                  AND valid_until <= CURRENT_DATE+14) AS expiring,
               (SELECT COALESCE(round(avg(score)),0) FROM training_attempt
-               WHERE organization_id=%s) AS training_score
+               WHERE organization_id=%s) AS training_score,
+              (SELECT count(*) FROM interaction
+               WHERE organization_id=%s AND outcome='won'
+                 AND outcome_updated_at>=now()-interval '30 days') AS won_30d,
+              (SELECT COALESCE(sum(outcome_value),0) FROM interaction
+               WHERE organization_id=%s AND outcome='won'
+                 AND outcome_updated_at>=now()-interval '30 days') AS won_value_30d,
+              (SELECT count(*) FROM interaction
+               WHERE organization_id=%s AND outcome='following') AS following
             """,
-            (organization_id,) * 9,
+            (organization_id,) * 12,
         )
         metrics = cur.fetchone()
         cur.execute(
