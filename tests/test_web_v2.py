@@ -28,6 +28,8 @@ def test_expected_v2_routes_are_registered():
         "/api/training/quiz",
         "/api/runtime/info",
         "/api/teams/all",
+        "/api/team-roles",
+        "/api/teams/{team_id}/members",
         "/api/teams/{team_id}/apply-role",
         "/api/facts",
         "/api/facts/import",

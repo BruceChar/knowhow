@@ -5,6 +5,7 @@ const state = {
   gaps: [],
   team: [],
   roles: [],
+  teamRoles: [],
   teams: [],
   owners: [],
   lastInteraction: null,
@@ -157,15 +158,33 @@ function enterApp(user) {
 
 function configureNavigation() {
   $('[data-page="today"]').hidden = !hasPermission("dashboard.view");
-  $('[data-page="team"]').hidden = !hasPermission("team.manage");
+  $('[data-page="team"]').hidden = !(
+    hasPermission("team.manage") ||
+    (state.user?.team_roles || []).some(role => (role.permissions || []).includes("team.lead"))
+  );
   $('[data-page="training"]').hidden = !hasPermission("training.use");
   $('[data-page="facts"]').hidden = !hasPermission("facts.view");
   $("#facts-import-button").hidden = !hasPermission("facts.manage");
   $("#role-panel").hidden = !hasPermission("role.manage");
+  const globalTeamManager = hasPermission("team.manage");
+  $("#new-team-button").hidden = !globalTeamManager;
+  $("#new-account-button").hidden = !globalTeamManager;
+  $("#invite-member-button").hidden = !globalTeamManager;
+  $("#lan-info-button").hidden = !globalTeamManager;
 }
 
 function hasPermission(code) {
   return (state.user?.permissions || []).includes(code);
+}
+
+function hasTeamPermission(teamId, code) {
+  return (state.user?.team_roles || []).some(
+    role => role.team_id === teamId && (role.permissions || []).includes(code),
+  );
+}
+
+function canManageTeam(teamId) {
+  return hasPermission("team.manage") || hasTeamPermission(teamId, "team.lead");
 }
 
 function scopeLabel(scope, teamName) {
@@ -407,7 +426,6 @@ async function executeImport(batchId) {
 }
 
 function renderKnowledge() {
-  const canPublish = hasPermission("knowledge.publish");
   $("#knowledge-list").innerHTML = state.knowledge.map(item => `
     <article class="knowledge-item">
       <div class="kind-label">${esc(kindLabels[item.kind] || item.kind)}</div>
@@ -418,8 +436,8 @@ function renderKnowledge() {
       </div>
       <div>
         <span class="pill status-${esc(item.status)}">${esc(statusLabels[item.status] || item.status)}</span>
-        ${canPublish && item.status !== "published" ? `<button class="text-button publish-knowledge" data-id="${item.id}">发布</button>` : ""}
-        ${canPublish && item.status === "published" ? `<button class="text-button archive-knowledge" data-id="${item.id}">归档</button>` : ""}
+        ${(hasPermission("knowledge.publish") || (item.scope === "team" && hasTeamPermission(item.team_id, "knowledge.publish"))) && item.status !== "published" ? `<button class="text-button publish-knowledge" data-id="${item.id}">发布</button>` : ""}
+        ${(hasPermission("knowledge.publish") || (item.scope === "team" && hasTeamPermission(item.team_id, "knowledge.publish"))) && item.status === "published" ? `<button class="text-button archive-knowledge" data-id="${item.id}">归档</button>` : ""}
       </div>
     </article>
   `).join("") || '<p class="muted">还没有知识。先新建一条标准问答，或批量导入。</p>';
@@ -591,12 +609,19 @@ async function ignoreGap(id) {
 
 async function loadTeam() {
   try {
-    const requests = [api("/api/team"), api("/api/teams/all")];
-    if (hasPermission("role.manage")) requests.push(api("/api/roles"));
-    const [data, teams, roles] = await Promise.all(requests);
+    const globalTeamManager = hasPermission("team.manage");
+    const [data, teams] = await Promise.all([
+      globalTeamManager ? api("/api/team") : Promise.resolve({ items: [] }),
+      globalTeamManager ? api("/api/teams/all") : api("/api/teams"),
+    ]);
+    const roles = hasPermission("role.manage")
+      ? await api("/api/roles") : null;
+    const teamRoles = (globalTeamManager || hasTeamLeadRole())
+      ? await api("/api/team-roles") : null;
     state.team = data.items;
     state.teams = teams.items;
     state.roles = roles?.items || [];
+    state.teamRoles = teamRoles?.items || [];
     renderTeams();
     renderTeam();
     renderRoles();
@@ -605,18 +630,27 @@ async function loadTeam() {
   }
 }
 
+function hasTeamLeadRole() {
+  return (state.user?.team_roles || []).some(
+    role => (role.permissions || []).includes("team.lead"),
+  );
+}
+
 function renderTeams() {
+  const globalTeamManager = hasPermission("team.manage");
   $("#team-overview").innerHTML = state.teams.map(team => `
     <article class="team-item">
       <div><strong>${esc(team.name)}</strong><p class="muted small">${team.member_count} 名成员 · 默认角色：${esc(team.default_role_name || "未设置")}</p></div>
       <div class="button-row">
-        <button class="button ghost set-team-role" data-id="${team.id}">设置默认角色</button>
-        <button class="button ghost apply-team-role" data-id="${team.id}">统一应用到组员</button>
+        <button class="button ghost manage-team-members" data-id="${team.id}">成员与角色</button>
+        ${globalTeamManager ? `<button class="button ghost set-team-role" data-id="${team.id}">设置默认角色</button>
+        <button class="button ghost apply-team-role" data-id="${team.id}">统一应用到组员</button>` : ""}
       </div>
     </article>
   `).join("") || '<p class="muted small">暂无团队。</p>';
   $$(".set-team-role").forEach(button => button.addEventListener("click", () => editTeamRole(Number(button.dataset.id))));
   $$(".apply-team-role").forEach(button => button.addEventListener("click", () => applyTeamRole(Number(button.dataset.id))));
+  $$(".manage-team-members").forEach(button => button.addEventListener("click", () => manageTeamMembers(Number(button.dataset.id))));
 }
 
 function renderTeam() {
@@ -651,6 +685,7 @@ function renderTeam() {
 
 async function createAccount() {
   if (!state.roles.length) await loadTeam();
+  const availableRoles = state.roles.length ? state.roles : state.teamRoles;
   const result = await openDialog({
     title: "添加团队成员",
     description: "首次登录后建议修改临时密码。",
@@ -658,7 +693,7 @@ async function createAccount() {
       { name: "display_name", label: "姓名", required: true },
       { name: "username", label: "登录名", required: true, pattern: "^[a-zA-Z0-9_.-]{3,}$", error: "至少 3 位，仅支持字母、数字、点、横线和下划线" },
       { name: "password", label: "初始密码", inputType: "password", required: true },
-      { name: "role_id", label: "角色", type: "select", required: true, value: String(state.roles.find(role => role.code === "sales")?.id || ""), options: state.roles.filter(role => role.code !== "owner").map(role => ({ value: String(role.id), label: role.name })) },
+      { name: "role_id", label: "公司角色", type: "select", required: true, value: String(availableRoles.find(role => role.code === "sales")?.id || ""), options: availableRoles.filter(role => role.code !== "owner" && !role.team_only).map(role => ({ value: String(role.id), label: role.name })) },
       { name: "team_ids", label: "所属团队", type: "multiselect", value: state.teams.length ? [state.teams[0].id] : [], options: state.teams.map(team => ({ value: String(team.id), label: team.name })) },
     ],
     submitText: "创建账户",
@@ -717,6 +752,49 @@ async function editTeamRole(teamId) {
       method: "PUT", body: JSON.stringify(result),
     });
     showToast("团队默认角色已更新");
+    await loadTeam();
+  } catch (error) {
+    showToast(error.message, true);
+  }
+}
+
+async function manageTeamMembers(teamId) {
+  try {
+    const team = state.teams.find(item => item.id === teamId);
+    const result = await api(`/api/teams/${teamId}/members`);
+    const members = result.items || [];
+    const roles = state.teamRoles.length ? state.teamRoles : state.roles;
+    if (!members.length) {
+      showToast("该团队还没有成员；请先在“成员列表”中调整团队。");
+      return;
+    }
+    const summary = members.map(member => `${member.display_name}：${member.role_name}`).join("\n");
+    const form = await openDialog({
+      title: `团队成员角色 · ${team?.name || ""}`,
+      description: `${summary}\n\n选择一名成员和团队角色。团队角色只在该团队内生效。`,
+      fields: [
+        {
+          name: "account_id", label: "成员", type: "select",
+          options: members.map(member => ({
+            value: String(member.id),
+            label: `${member.display_name}（当前：${member.role_name}）`,
+          })),
+        },
+        {
+          name: "role_id", label: "团队角色", type: "select",
+          options: roles.filter(role => role.team_only || role.code === "sales").map(role => ({
+            value: String(role.id), label: role.name,
+          })),
+        },
+      ],
+      submitText: "保存团队角色",
+    });
+    if (!form) return;
+    await api(`/api/teams/${teamId}/members/${form.account_id}`, {
+      method: "PUT",
+      body: JSON.stringify({ role_id: Number(form.role_id) }),
+    });
+    showToast("团队角色已更新，该成员需要重新登录");
     await loadTeam();
   } catch (error) {
     showToast(error.message, true);

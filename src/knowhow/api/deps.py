@@ -5,7 +5,7 @@ import psycopg
 from fastapi import Depends, HTTPException, Request
 from psycopg.rows import dict_row
 
-from knowhow.security import session_account
+from knowhow.security import load_team_roles, session_account
 from knowhow.settings import settings
 
 SESSION_COOKIE = "knowhow_session"
@@ -37,6 +37,7 @@ def current_account(request: Request) -> dict:
             )
             account = cur.fetchone()
         if account:
+            account["team_roles"] = load_team_roles(account["id"])
             return account
     raise HTTPException(401, "请先登录")
 

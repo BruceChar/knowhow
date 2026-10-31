@@ -11,6 +11,7 @@ from knowhow.api.deps import SESSION_COOKIE, current_account
 from knowhow.security import (
     create_session,
     hash_password,
+    load_team_roles,
     revoke_session,
     token_hash,
     verify_password,
@@ -78,13 +79,13 @@ def setup(body: SetupBody, response: Response):
             cur.execute(
                 """
                 INSERT INTO access_role
-                  (organization_id,code,name,builtin,permissions)
-                VALUES (%s,%s,%s,true,%s)
+                  (organization_id,code,name,builtin,team_only,permissions)
+                VALUES (%s,%s,%s,true,%s,%s)
                 RETURNING id
                 """,
                 (
                     organization["id"], code, template["name"],
-                    template["permissions"],
+                    template.get("team_only", False), template["permissions"],
                 ),
             )
             role_ids[code] = cur.fetchone()["id"]
@@ -111,8 +112,11 @@ def setup(body: SetupBody, response: Response):
         )
         team_id = cur.fetchone()["id"]
         cur.execute(
-            "INSERT INTO team_member(team_id,account_id) VALUES (%s,%s)",
-            (team_id, account["id"]),
+            """
+            INSERT INTO team_member(team_id,account_id,role_id)
+            VALUES (%s,%s,%s)
+            """,
+            (team_id, account["id"], role_ids["sales"]),
         )
         cur.executemany(
             """
@@ -150,6 +154,14 @@ def setup(body: SetupBody, response: Response):
             "role_name": ROLE_TEMPLATES["owner"]["name"],
             "permissions": ROLE_TEMPLATES["owner"]["permissions"],
             "team_ids": [team_id],
+            "team_roles": [{
+                "team_id": team_id,
+                "team_name": "销售部",
+                "role_id": role_ids["sales"],
+                "role_code": "sales",
+                "role_name": "业务员",
+                "permissions": ROLE_TEMPLATES["sales"]["permissions"],
+            }],
         },
     }
 
@@ -182,6 +194,7 @@ def login(body: LoginBody, response: Response):
         raise HTTPException(401, "账号或密码错误")
     _setup_cookie(response, account["id"])
     account.pop("password_hash", None)
+    account["team_roles"] = load_team_roles(account["id"])
     return {"ok": True, "user": account}
 
 

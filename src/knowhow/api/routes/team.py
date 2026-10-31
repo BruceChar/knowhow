@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from knowhow.api.deps import current_account, require_permission
+from knowhow.access import can_manage_team
 from knowhow.services import team
 
 router = APIRouter(tags=["team"])
@@ -44,6 +45,10 @@ class AccountTeamsBody(BaseModel):
 
 
 class TeamRoleBody(BaseModel):
+    role_id: int
+
+
+class MemberRoleBody(BaseModel):
     role_id: int
 
 
@@ -87,6 +92,14 @@ def set_enabled(
 @router.get("/api/roles")
 def list_roles(user: dict = Depends(require_permission("role.manage"))):
     return {"items": team.list_roles(user["organization_id"])}
+
+
+@router.get("/api/team-roles")
+def list_team_roles(user: dict = Depends(current_account)):
+    roles = team.list_roles(user["organization_id"])
+    if "team.manage" not in (user.get("permissions") or []):
+        roles = [role for role in roles if role["team_only"] or role["code"] == "sales"]
+    return {"items": roles}
 
 
 @router.post("/api/roles")
@@ -185,4 +198,52 @@ def set_account_teams(
         return {"ok": True}
     except LookupError as exc:
         raise HTTPException(404, str(exc)) from exc
+
+
+@router.get("/api/teams/{team_id}/members")
+def list_team_members(
+    team_id: int,
+    user: dict = Depends(current_account),
+):
+    if not can_manage_team(user, team_id):
+        raise HTTPException(403, "无权管理该团队")
+    return {
+        "items": team.list_team_members(
+            user["organization_id"], team_id,
+        )
+    }
+
+
+@router.put("/api/teams/{team_id}/members/{account_id}")
+def set_team_member_role(
+    team_id: int,
+    account_id: int,
+    body: MemberRoleBody,
+    user: dict = Depends(current_account),
+):
+    if not can_manage_team(user, team_id):
+        raise HTTPException(403, "无权管理该团队")
+    try:
+        return team.set_team_member_role(
+            user["organization_id"], team_id, account_id, body.role_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.delete("/api/teams/{team_id}/members/{account_id}")
+def remove_team_member(
+    team_id: int,
+    account_id: int,
+    user: dict = Depends(current_account),
+):
+    if not can_manage_team(user, team_id):
+        raise HTTPException(403, "无权管理该团队")
+    try:
+        team.remove_team_member(
+            user["organization_id"], team_id, account_id,
+        )
+        return {"ok": True}
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
 

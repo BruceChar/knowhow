@@ -70,7 +70,7 @@ def create_knowledge(
 
 @router.get("/api/knowledge/owners")
 def list_owners(
-    user: dict = Depends(require_permission("knowledge.edit")),
+    user: dict = Depends(current_account),
 ):
     return {"items": knowledge.list_owners(user["organization_id"])}
 
@@ -79,7 +79,7 @@ def list_owners(
 def update_knowledge(
     knowledge_id: int,
     body: KnowledgeBody,
-    user: dict = Depends(require_permission("knowledge.edit")),
+    user: dict = Depends(current_account),
 ):
     try:
         return knowledge.update_knowledge(
@@ -88,12 +88,14 @@ def update_knowledge(
         )
     except LookupError as exc:
         raise HTTPException(404, str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(403, str(exc)) from exc
 
 
 @router.post("/api/knowledge/{knowledge_id}/publish")
 def publish_knowledge(
     knowledge_id: int,
-    user: dict = Depends(require_permission("knowledge.publish")),
+    user: dict = Depends(current_account),
 ):
     try:
         return knowledge.publish_knowledge(
@@ -101,12 +103,14 @@ def publish_knowledge(
         )
     except LookupError as exc:
         raise HTTPException(404, str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(403, str(exc)) from exc
 
 
 @router.post("/api/knowledge/{knowledge_id}/archive")
 def archive_knowledge(
     knowledge_id: int,
-    user: dict = Depends(require_permission("knowledge.publish")),
+    user: dict = Depends(current_account),
 ):
     try:
         knowledge.archive_knowledge(
@@ -115,21 +119,25 @@ def archive_knowledge(
         return {"ok": True}
     except LookupError as exc:
         raise HTTPException(404, str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(403, str(exc)) from exc
 
 
 @router.post("/api/knowledge/{knowledge_id}/embedding")
 def rebuild_embedding(
     knowledge_id: int,
-    user: dict = Depends(require_permission("knowledge.edit")),
+    user: dict = Depends(current_account),
 ):
     try:
         return knowledge.rebuild_embedding(
-            user["organization_id"], knowledge_id,
+            user["organization_id"], user["id"], knowledge_id,
         )
     except LookupError as exc:
         raise HTTPException(404, str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(503, str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(403, str(exc)) from exc
 
 
 @router.post("/api/knowledge/import-text")

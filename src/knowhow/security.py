@@ -76,12 +76,35 @@ def session_account(token: str) -> dict | None:
             cur.execute(query, (token_hash(token),))
             account = cur.fetchone()
             if account:
+                account["team_roles"] = _team_roles(cur, account["id"])
                 cur.execute(
                     "UPDATE session SET last_seen_at=now() WHERE token_hash=%s",
                     (token_hash(token),),
                 )
                 conn.commit()
     return account
+
+
+def load_team_roles(account_id: int) -> list[dict]:
+    with psycopg.connect(settings.database_url, row_factory=dict_row) as conn:
+        with conn.cursor() as cur:
+            return _team_roles(cur, account_id)
+
+
+def _team_roles(cur, account_id: int) -> list[dict]:
+    cur.execute(
+        """
+        SELECT tm.team_id,t.name AS team_name,r.id AS role_id,
+               r.code AS role_code,r.name AS role_name,r.permissions
+        FROM team_member tm
+        JOIN team t ON t.id=tm.team_id
+        JOIN access_role r ON r.id=tm.role_id
+        WHERE tm.account_id=%s
+        ORDER BY tm.team_id
+        """,
+        (account_id,),
+    )
+    return cur.fetchall()
 
 
 def revoke_session(token: str) -> None:

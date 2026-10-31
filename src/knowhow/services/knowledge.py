@@ -69,6 +69,44 @@ def _assert_team_scope(cur, organization_id: int, account_id: int, team_id: int)
         raise ValueError("团队不存在或无权使用")
 
 
+def _assert_knowledge_permission(
+    cur,
+    organization_id: int,
+    account_id: int,
+    knowledge_id: int,
+    permission: str,
+):
+    cur.execute(
+        """
+        SELECT k.scope,
+               EXISTS (
+                 SELECT 1 FROM account a
+                 JOIN access_role r ON r.id=a.role_id
+                 WHERE a.id=%s AND %s=ANY(r.permissions)
+               ) AS global_allowed,
+               EXISTS (
+                 SELECT 1 FROM team_member tm
+                 JOIN access_role r ON r.id=tm.role_id
+                 WHERE tm.account_id=%s AND tm.team_id=k.team_id
+                   AND %s=ANY(r.permissions)
+               ) AS team_allowed
+        FROM knowledge_unit k
+        WHERE k.id=%s AND k.organization_id=%s
+        """,
+        (
+            account_id, permission, account_id, permission,
+            knowledge_id, organization_id,
+        ),
+    )
+    row = cur.fetchone()
+    if not row:
+        raise LookupError("知识不存在")
+    if not (row["global_allowed"] or (
+        row["scope"] == "team" and row["team_allowed"]
+    )):
+        raise PermissionError(f"缺少团队或公司级权限：{permission}")
+
+
 def list_knowledge(
     organization_id: int,
     account_id: int,
@@ -218,6 +256,9 @@ def update_knowledge(
 ) -> dict:
     with connect() as conn, conn.cursor() as cur:
         _assert_visible(cur, organization_id, account_id, knowledge_id)
+        _assert_knowledge_permission(
+            cur, organization_id, account_id, knowledge_id, "knowledge.edit",
+        )
         if scope == "team" and not team_id:
             raise ValueError("团队知识必须指定团队")
         if team_id:
@@ -255,6 +296,9 @@ def update_knowledge(
 def publish_knowledge(organization_id: int, account_id: int, knowledge_id: int) -> dict:
     with connect() as conn, conn.cursor() as cur:
         _assert_visible(cur, organization_id, account_id, knowledge_id)
+        _assert_knowledge_permission(
+            cur, organization_id, account_id, knowledge_id, "knowledge.publish",
+        )
         cur.execute(
             """
             SELECT * FROM knowledge_unit
@@ -316,8 +360,11 @@ def publish_knowledge(organization_id: int, account_id: int, knowledge_id: int) 
     return result
 
 
-def rebuild_embedding(organization_id: int, knowledge_id: int) -> dict:
+def rebuild_embedding(organization_id: int, account_id: int, knowledge_id: int) -> dict:
     with connect() as conn, conn.cursor() as cur:
+        _assert_knowledge_permission(
+            cur, organization_id, account_id, knowledge_id, "knowledge.edit",
+        )
         cur.execute(
             """
             SELECT title,question,answer FROM knowledge_unit
@@ -359,6 +406,9 @@ def archive_knowledge(
 ) -> None:
     with connect() as conn, conn.cursor() as cur:
         _assert_visible(cur, organization_id, account_id, knowledge_id)
+        _assert_knowledge_permission(
+            cur, organization_id, account_id, knowledge_id, "knowledge.publish",
+        )
         cur.execute(
             """
             UPDATE knowledge_unit SET status='archived', updated_at=now()

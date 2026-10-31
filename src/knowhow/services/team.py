@@ -27,11 +27,20 @@ def list_accounts(organization_id: int) -> list[dict]:
                      ARRAY_AGG(t.name ORDER BY t.id)
                        FILTER (WHERE t.id IS NOT NULL),
                      '{}'
-                   ) AS team_names
+                   ) AS team_names,
+                   COALESCE(
+                     jsonb_agg(jsonb_build_object(
+                       'team_id',t.id,'team_name',t.name,
+                       'role_id',tr.id,'role_name',tr.name
+                     ) ORDER BY t.id)
+                       FILTER (WHERE t.id IS NOT NULL),
+                     '[]'::jsonb
+                   ) AS team_roles
             FROM account a
             JOIN access_role r ON r.id=a.role_id
             LEFT JOIN team_member tm ON tm.account_id=a.id
             LEFT JOIN team t ON t.id=tm.team_id
+            LEFT JOIN access_role tr ON tr.id=tm.role_id
             WHERE a.organization_id=%s
             GROUP BY a.id,r.id
             ORDER BY a.id
@@ -55,6 +64,7 @@ def create_account(
             """
             SELECT code FROM access_role
             WHERE id=%s AND organization_id=%s AND code!='owner'
+              AND team_only=false
             """,
             (role_id, organization_id),
         )
@@ -79,8 +89,8 @@ def create_account(
         if selected_teams:
             cur.execute(
                 """
-                INSERT INTO team_member(team_id,account_id)
-                SELECT id,%s FROM team
+                INSERT INTO team_member(team_id,account_id,role_id)
+                SELECT id,%s,default_role_id FROM team
                 WHERE organization_id=%s AND id=ANY(%s)
                 """,
                 (row["id"], organization_id, selected_teams),
@@ -88,8 +98,8 @@ def create_account(
         else:
             cur.execute(
                 """
-                INSERT INTO team_member(team_id,account_id)
-                SELECT id,%s FROM team
+                INSERT INTO team_member(team_id,account_id,role_id)
+                SELECT id,%s,default_role_id FROM team
                 WHERE organization_id=%s ORDER BY id LIMIT 1
                 ON CONFLICT DO NOTHING
                 """,
@@ -120,7 +130,7 @@ def list_roles(organization_id: int) -> list[dict]:
     with connect() as conn, conn.cursor() as cur:
         cur.execute(
             """
-            SELECT id, code, name, builtin, permissions, created_at
+            SELECT id, code, name, builtin, team_only, permissions, created_at
             FROM access_role WHERE organization_id=%s ORDER BY builtin DESC, id
             """,
             (organization_id,),
@@ -277,23 +287,19 @@ def apply_team_default_role(organization_id: int, team_id: int) -> dict:
             raise ValueError("团队未设置默认角色")
         cur.execute(
             """
-            SELECT code FROM access_role WHERE id=%s
-            """,
-            (team["default_role_id"],),
-        )
-        role = cur.fetchone()
-        cur.execute(
-            """
-            UPDATE account a
-            SET role_id=%s, role=%s, updated_at=now()
-            FROM team_member tm, access_role cr
+            UPDATE team_member tm
+            SET role_id=%s
+            FROM account a
             WHERE tm.team_id=%s AND tm.account_id=a.id
-              AND a.organization_id=%s AND cr.id=a.role_id
-              AND cr.code!='owner'
+              AND a.organization_id=%s AND a.role_id!=(
+                SELECT id FROM access_role
+                WHERE organization_id=%s AND code='owner'
+              )
             RETURNING a.id
             """,
             (
-                team["default_role_id"], role["code"], team_id, organization_id,
+                team["default_role_id"], team_id, organization_id,
+                organization_id,
             ),
         )
         affected = [row["id"] for row in cur.fetchall()]
@@ -331,6 +337,113 @@ def set_account_teams(
                 """,
                 (account_id, organization_id, team_ids),
             )
+        cur.execute("DELETE FROM session WHERE account_id=%s", (account_id,))
+        conn.commit()
+
+
+def set_account_memberships(
+    organization_id: int,
+    account_id: int,
+    memberships: list[dict],
+) -> None:
+    with connect() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT 1 FROM account WHERE id=%s AND organization_id=%s",
+            (account_id, organization_id),
+        )
+        if not cur.fetchone():
+            raise LookupError("账户不存在")
+        cur.execute("DELETE FROM team_member WHERE account_id=%s", (account_id,))
+        for membership in memberships:
+            team_id = int(membership["team_id"])
+            role_id = int(membership["role_id"])
+            cur.execute(
+                """
+                INSERT INTO team_member(team_id,account_id,role_id)
+                SELECT t.id,%s,r.id
+                FROM team t JOIN access_role r
+                  ON r.id=%s AND r.organization_id=t.organization_id
+                WHERE t.id=%s AND t.organization_id=%s
+                  AND r.code!='owner'
+                """,
+                (account_id, role_id, team_id, organization_id),
+            )
+            if cur.rowcount == 0:
+                raise ValueError("团队或团队角色不存在")
+        cur.execute("DELETE FROM session WHERE account_id=%s", (account_id,))
+        conn.commit()
+
+
+def list_team_members(organization_id: int, team_id: int) -> list[dict]:
+    with connect() as conn, conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT a.id,a.username,a.display_name,tm.role_id,
+                   r.name AS role_name
+            FROM team_member tm
+            JOIN account a ON a.id=tm.account_id
+            JOIN team t ON t.id=tm.team_id
+            JOIN access_role r ON r.id=tm.role_id
+            WHERE tm.team_id=%s AND t.organization_id=%s
+            ORDER BY a.id
+            """,
+            (team_id, organization_id),
+        )
+        return cur.fetchall()
+
+
+def set_team_member_role(
+    organization_id: int,
+    team_id: int,
+    account_id: int,
+    role_id: int,
+) -> dict:
+    with connect() as conn, conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE team_member tm
+            SET role_id=%s
+            FROM team t, access_role r
+            WHERE tm.team_id=%s AND tm.account_id=%s
+              AND t.id=tm.team_id AND t.organization_id=%s
+              AND r.id=%s AND r.organization_id=%s
+              AND (r.team_only OR r.code='sales')
+            RETURNING tm.account_id,tm.team_id,tm.role_id
+            """,
+            (
+                role_id, team_id, account_id, organization_id,
+                role_id, organization_id,
+            ),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise ValueError("成员、团队或可分配角色不存在")
+        cur.execute("DELETE FROM session WHERE account_id=%s", (account_id,))
+        conn.commit()
+    return row
+
+
+def remove_team_member(
+    organization_id: int,
+    team_id: int,
+    account_id: int,
+) -> None:
+    with connect() as conn, conn.cursor() as cur:
+        cur.execute(
+            """
+            DELETE FROM team_member tm
+            USING team t, account a
+            WHERE tm.team_id=%s AND tm.account_id=%s
+              AND t.id=tm.team_id AND t.organization_id=%s
+              AND a.id=tm.account_id AND a.role_id!=(
+                SELECT id FROM access_role
+                WHERE organization_id=%s AND code='owner'
+              )
+            """,
+            (team_id, account_id, organization_id, organization_id),
+        )
+        if cur.rowcount == 0:
+            raise ValueError("成员不存在或老板不能移出团队")
         cur.execute("DELETE FROM session WHERE account_id=%s", (account_id,))
         conn.commit()
 

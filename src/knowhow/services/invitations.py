@@ -166,10 +166,10 @@ def accept_invite(
         account = cur.fetchone()
         cur.execute(
             """
-            INSERT INTO team_member(team_id,account_id)
-            VALUES (%s,%s)
+            INSERT INTO team_member(team_id,account_id,role_id)
+            VALUES (%s,%s,%s)
             """,
-            (invite["team_id"], account["id"]),
+            (invite["team_id"], account["id"], invite["role_id"]),
         )
         cur.execute(
             """
