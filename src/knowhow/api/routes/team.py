@@ -37,19 +37,14 @@ class RolePermissionsBody(BaseModel):
 
 class TeamBody(BaseModel):
     name: str = Field(min_length=1, max_length=80)
-    default_role_id: int | None = None
 
 
 class AccountTeamsBody(BaseModel):
     team_ids: list[int]
 
 
-class TeamRoleBody(BaseModel):
-    role_id: int
-
-
-class MemberRoleBody(BaseModel):
-    role_id: int
+class LeaderBody(BaseModel):
+    is_leader: bool
 
 
 @router.get("/api/team")
@@ -94,12 +89,11 @@ def list_roles(user: dict = Depends(require_permission("role.manage"))):
     return {"items": team.list_roles(user["organization_id"])}
 
 
-@router.get("/api/team-roles")
-def list_team_roles(user: dict = Depends(current_account)):
-    roles = team.list_roles(user["organization_id"])
-    if "team.manage" not in (user.get("permissions") or []):
-        roles = [role for role in roles if role["team_only"] or role["code"] == "sales"]
-    return {"items": roles}
+@router.get("/api/assignable-roles")
+def list_assignable_roles(
+    user: dict = Depends(require_permission("team.manage")),
+):
+    return {"items": team.list_roles(user["organization_id"])}
 
 
 @router.post("/api/roles")
@@ -150,39 +144,12 @@ def create_team(
 ):
     try:
         return team.create_team(
-            user["organization_id"], body.name, body.default_role_id,
+            user["organization_id"], body.name,
         )
     except Exception as exc:
         if "duplicate key" in str(exc).lower():
             raise HTTPException(409, "团队名称已存在") from exc
         raise
-
-
-@router.put("/api/teams/{team_id}/default-role")
-def update_team_default_role(
-    team_id: int,
-    body: TeamRoleBody,
-    user: dict = Depends(require_permission("team.manage")),
-):
-    try:
-        return team.update_team_default_role(
-            user["organization_id"], team_id, body.role_id,
-        )
-    except ValueError as exc:
-        raise HTTPException(400, str(exc)) from exc
-
-
-@router.post("/api/teams/{team_id}/apply-role")
-def apply_team_default_role(
-    team_id: int,
-    user: dict = Depends(require_permission("team.manage")),
-):
-    try:
-        return team.apply_team_default_role(
-            user["organization_id"], team_id,
-        )
-    except ValueError as exc:
-        raise HTTPException(400, str(exc)) from exc
 
 
 @router.put("/api/team/{account_id}/teams")
@@ -214,18 +181,18 @@ def list_team_members(
     }
 
 
-@router.put("/api/teams/{team_id}/members/{account_id}")
-def set_team_member_role(
+@router.put("/api/teams/{team_id}/members/{account_id}/leader")
+def set_team_member_leader(
     team_id: int,
     account_id: int,
-    body: MemberRoleBody,
+    body: LeaderBody,
     user: dict = Depends(current_account),
 ):
     if not can_manage_team(user, team_id):
         raise HTTPException(403, "无权管理该团队")
     try:
-        return team.set_team_member_role(
-            user["organization_id"], team_id, account_id, body.role_id,
+        return team.set_team_member_leader(
+            user["organization_id"], team_id, account_id, body.is_leader,
         )
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc

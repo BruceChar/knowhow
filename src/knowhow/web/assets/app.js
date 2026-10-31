@@ -5,7 +5,6 @@ const state = {
   gaps: [],
   team: [],
   roles: [],
-  teamRoles: [],
   teams: [],
   owners: [],
   lastInteraction: null,
@@ -615,13 +614,11 @@ async function loadTeam() {
       globalTeamManager ? api("/api/teams/all") : api("/api/teams"),
     ]);
     const roles = hasPermission("role.manage")
-      ? await api("/api/roles") : null;
-    const teamRoles = (globalTeamManager || hasTeamLeadRole())
-      ? await api("/api/team-roles") : null;
+      ? await api("/api/roles")
+      : (globalTeamManager ? await api("/api/assignable-roles") : null);
     state.team = data.items;
     state.teams = teams.items;
     state.roles = roles?.items || [];
-    state.teamRoles = teamRoles?.items || [];
     renderTeams();
     renderTeam();
     renderRoles();
@@ -630,26 +627,15 @@ async function loadTeam() {
   }
 }
 
-function hasTeamLeadRole() {
-  return (state.user?.team_roles || []).some(
-    role => (role.permissions || []).includes("team.lead"),
-  );
-}
-
 function renderTeams() {
-  const globalTeamManager = hasPermission("team.manage");
   $("#team-overview").innerHTML = state.teams.map(team => `
     <article class="team-item">
-      <div><strong>${esc(team.name)}</strong><p class="muted small">${team.member_count} 名成员 · 默认角色：${esc(team.default_role_name || "未设置")}</p></div>
+      <div><strong>${esc(team.name)}</strong><p class="muted small">${team.member_count} 名成员 · ${team.leader_count || 0} 名组长</p></div>
       <div class="button-row">
-        <button class="button ghost manage-team-members" data-id="${team.id}">成员与角色</button>
-        ${globalTeamManager ? `<button class="button ghost set-team-role" data-id="${team.id}">设置默认角色</button>
-        <button class="button ghost apply-team-role" data-id="${team.id}">统一应用到组员</button>` : ""}
+        <button class="button ghost manage-team-members" data-id="${team.id}">成员与组长</button>
       </div>
     </article>
   `).join("") || '<p class="muted small">暂无团队。</p>';
-  $$(".set-team-role").forEach(button => button.addEventListener("click", () => editTeamRole(Number(button.dataset.id))));
-  $$(".apply-team-role").forEach(button => button.addEventListener("click", () => applyTeamRole(Number(button.dataset.id))));
   $$(".manage-team-members").forEach(button => button.addEventListener("click", () => manageTeamMembers(Number(button.dataset.id))));
 }
 
@@ -685,7 +671,7 @@ function renderTeam() {
 
 async function createAccount() {
   if (!state.roles.length) await loadTeam();
-  const availableRoles = state.roles.length ? state.roles : state.teamRoles;
+  const availableRoles = state.roles;
   const result = await openDialog({
     title: "添加团队成员",
     description: "首次登录后建议修改临时密码。",
@@ -711,47 +697,16 @@ async function createAccount() {
 }
 
 async function createTeam() {
-  if (!state.roles.length) await loadTeam();
   const result = await openDialog({
     title: "新建团队",
     description: "团队是一个共享边界。示例：把北美客户业务员放在“北美组”，他们能看到北美组的团队知识，但看不到欧洲组。",
-    fields: [
-      { name: "name", label: "团队名称", required: true, placeholder: "例如：宠物用品组" },
-      { name: "default_role_id", label: "团队默认角色", type: "select", value: String(state.roles.find(role => role.code === "sales")?.id || ""), options: state.roles.filter(role => role.code !== "owner").map(role => ({ value: String(role.id), label: role.name })) },
-    ],
+    fields: [{ name: "name", label: "团队名称", required: true, placeholder: "例如：宠物用品组" }],
     submitText: "创建团队",
   });
   if (!result) return;
-  result.default_role_id = Number(result.default_role_id);
   try {
     await api("/api/teams", { method: "POST", body: JSON.stringify(result) });
     showToast("团队已创建");
-    await loadTeam();
-  } catch (error) {
-    showToast(error.message, true);
-  }
-}
-
-async function editTeamRole(teamId) {
-  const team = state.teams.find(item => item.id === teamId);
-  if (!team) return;
-  const result = await openDialog({
-    title: `团队默认角色 · ${team.name}`,
-    description: "这里只设置默认值。设置后可以点击“统一应用到组员”，不会自动覆盖老板。",
-    fields: [{
-      name: "role_id", label: "默认角色", type: "select",
-      value: String(team.default_role_id || ""),
-      options: state.roles.filter(role => role.code !== "owner").map(role => ({ value: String(role.id), label: role.name })),
-    }],
-    submitText: "保存默认角色",
-  });
-  if (!result) return;
-  result.role_id = Number(result.role_id);
-  try {
-    await api(`/api/teams/${teamId}/default-role`, {
-      method: "PUT", body: JSON.stringify(result),
-    });
-    showToast("团队默认角色已更新");
     await loadTeam();
   } catch (error) {
     showToast(error.message, true);
@@ -763,56 +718,40 @@ async function manageTeamMembers(teamId) {
     const team = state.teams.find(item => item.id === teamId);
     const result = await api(`/api/teams/${teamId}/members`);
     const members = result.items || [];
-    const roles = state.teamRoles.length ? state.teamRoles : state.roles;
     if (!members.length) {
       showToast("该团队还没有成员；请先在“成员列表”中调整团队。");
       return;
     }
-    const summary = members.map(member => `${member.display_name}：${member.role_name}`).join("\n");
+    const summary = members.map(member =>
+      `${member.display_name}：${member.is_leader ? "组长" : "组员"} · 公司角色 ${member.account_role_name}`
+    ).join("\n");
     const form = await openDialog({
-      title: `团队成员角色 · ${team?.name || ""}`,
-      description: `${summary}\n\n选择一名成员和团队角色。团队角色只在该团队内生效。`,
+      title: `团队成员与组长 · ${team?.name || ""}`,
+      description: `${summary}\n\n选择一名成员设置或取消组长。公司角色不会改变。`,
       fields: [
         {
           name: "account_id", label: "成员", type: "select",
           options: members.map(member => ({
             value: String(member.id),
-            label: `${member.display_name}（当前：${member.role_name}）`,
+            label: `${member.display_name}（${member.is_leader ? "组长" : "组员"}）`,
           })),
         },
         {
-          name: "role_id", label: "团队角色", type: "select",
-          options: roles.filter(role => role.team_only || role.code === "sales").map(role => ({
-            value: String(role.id), label: role.name,
-          })),
+          name: "is_leader", label: "团队身份", type: "select",
+          options: [
+            { value: "false", label: "普通组员" },
+            { value: "true", label: "组长（仅本团队）" },
+          ],
         },
       ],
-      submitText: "保存团队角色",
+      submitText: "保存团队身份",
     });
     if (!form) return;
-    await api(`/api/teams/${teamId}/members/${form.account_id}`, {
+    await api(`/api/teams/${teamId}/members/${form.account_id}/leader`, {
       method: "PUT",
-      body: JSON.stringify({ role_id: Number(form.role_id) }),
+      body: JSON.stringify({ is_leader: form.is_leader === "true" }),
     });
-    showToast("团队角色已更新，该成员需要重新登录");
-    await loadTeam();
-  } catch (error) {
-    showToast(error.message, true);
-  }
-}
-
-async function applyTeamRole(teamId) {
-  const team = state.teams.find(item => item.id === teamId);
-  if (!team) return;
-  const confirmed = await openConfirm(
-    "统一团队成员角色",
-    `将“${team.name}”所有非老板成员的权限统一改为“${team.default_role_name || "默认角色"}”。成员需要重新登录，是否继续？`,
-    "统一角色",
-  );
-  if (!confirmed) return;
-  try {
-    const result = await api(`/api/teams/${teamId}/apply-role`, { method: "POST" });
-    showToast(`已更新 ${result.updated} 名成员`);
+    showToast("团队身份已更新，该成员需要重新登录");
     await loadTeam();
   } catch (error) {
     showToast(error.message, true);
@@ -867,7 +806,7 @@ async function inviteMember() {
     description: "邀请链接一次有效。成员打开后只需填写姓名、登录名和密码，不需要理解角色编码。",
     fields: [
       { name: "team_id", label: "加入团队", type: "select", value: String(state.teams[0]?.id || ""), options: state.teams.map(team => ({ value: String(team.id), label: team.name })) },
-      { name: "role_id", label: "团队角色", type: "select", value: String(state.teams[0]?.default_role_id || state.roles.find(role => role.code === "sales")?.id || ""), options: state.roles.filter(role => role.code !== "owner").map(role => ({ value: String(role.id), label: role.name })) },
+      { name: "role_id", label: "公司角色", type: "select", value: String(state.roles.find(role => role.code === "sales")?.id || ""), options: state.roles.filter(role => role.code !== "owner").map(role => ({ value: String(role.id), label: role.name })) },
       { name: "expires_hours", label: "有效期（小时）", inputType: "number", value: "72", required: true },
     ],
     submitText: "生成邀请",

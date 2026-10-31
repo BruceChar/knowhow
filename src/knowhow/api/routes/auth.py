@@ -105,18 +105,18 @@ def setup(body: SetupBody, response: Response):
         account = cur.fetchone()
         cur.execute(
             """
-            INSERT INTO team(organization_id,name,default_role_id)
-            VALUES (%s,'销售部',%s) RETURNING id
+            INSERT INTO team(organization_id,name)
+            VALUES (%s,'销售部') RETURNING id
             """,
-            (organization["id"], role_ids["sales"]),
+            (organization["id"],),
         )
         team_id = cur.fetchone()["id"]
         cur.execute(
             """
-            INSERT INTO team_member(team_id,account_id,role_id)
-            VALUES (%s,%s,%s)
+            INSERT INTO team_member(team_id,account_id,is_leader)
+            VALUES (%s,%s,false)
             """,
-            (team_id, account["id"], role_ids["sales"]),
+            (team_id, account["id"]),
         )
         cur.executemany(
             """
@@ -157,10 +157,8 @@ def setup(body: SetupBody, response: Response):
             "team_roles": [{
                 "team_id": team_id,
                 "team_name": "销售部",
-                "role_id": role_ids["sales"],
-                "role_code": "sales",
-                "role_name": "业务员",
-                "permissions": ROLE_TEMPLATES["sales"]["permissions"],
+                "is_leader": False,
+                "permissions": [],
             }],
         },
     }

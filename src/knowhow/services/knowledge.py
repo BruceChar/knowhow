@@ -86,15 +86,14 @@ def _assert_knowledge_permission(
                ) AS global_allowed,
                EXISTS (
                  SELECT 1 FROM team_member tm
-                 JOIN access_role r ON r.id=tm.role_id
                  WHERE tm.account_id=%s AND tm.team_id=k.team_id
-                   AND %s=ANY(r.permissions)
+                   AND tm.is_leader
                ) AS team_allowed
         FROM knowledge_unit k
         WHERE k.id=%s AND k.organization_id=%s
         """,
         (
-            account_id, permission, account_id, permission,
+            account_id, permission, account_id,
             knowledge_id, organization_id,
         ),
     )

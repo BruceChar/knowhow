@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 import psycopg
 from psycopg.rows import dict_row
 
+from knowhow.access import TEAM_LEADER_PERMISSIONS
 from knowhow.settings import settings
 
 ITERATIONS = 260_000
@@ -94,17 +95,20 @@ def load_team_roles(account_id: int) -> list[dict]:
 def _team_roles(cur, account_id: int) -> list[dict]:
     cur.execute(
         """
-        SELECT tm.team_id,t.name AS team_name,r.id AS role_id,
-               r.code AS role_code,r.name AS role_name,r.permissions
+        SELECT tm.team_id,t.name AS team_name,tm.is_leader
         FROM team_member tm
         JOIN team t ON t.id=tm.team_id
-        JOIN access_role r ON r.id=tm.role_id
         WHERE tm.account_id=%s
         ORDER BY tm.team_id
         """,
         (account_id,),
     )
-    return cur.fetchall()
+    rows = cur.fetchall()
+    for row in rows:
+        row["permissions"] = (
+            sorted(TEAM_LEADER_PERMISSIONS) if row["is_leader"] else []
+        )
+    return rows
 
 
 def revoke_session(token: str) -> None:

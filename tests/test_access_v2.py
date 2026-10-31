@@ -20,12 +20,12 @@ def test_team_lead_permission_is_scoped_to_one_team():
         "team_roles": [
             {
                 "team_id": 10,
-                "role_code": "lead",
+                "is_leader": True,
                 "permissions": ["team.lead"],
             },
             {
                 "team_id": 20,
-                "role_code": "sales",
+                "is_leader": False,
                 "permissions": ["ask.use"],
             },
         ],

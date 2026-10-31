@@ -15,7 +15,6 @@ PERMISSIONS = {
     "training.use": "使用新人训练",
     "facts.view": "查看产品与报价事实",
     "facts.manage": "导入和管理产品报价",
-    "team.lead": "管理本团队",
 }
 
 ROLE_TEMPLATES = {
@@ -44,15 +43,12 @@ ROLE_TEMPLATES = {
             "facts.view",
         ],
     },
-    "lead": {
-        "name": "组长",
-        "team_only": True,
-        "permissions": [
-            "ask.use", "knowledge.view", "knowledge.suggest",
-            "knowledge.edit", "knowledge.publish",
-            "team.lead", "training.use", "facts.view",
-        ],
-    },
+}
+
+TEAM_LEADER_PERMISSIONS = {
+    "knowledge.edit",
+    "knowledge.publish",
+    "team.lead",
 }
 
 
@@ -63,13 +59,20 @@ def valid_permissions(values: list[str]) -> list[str]:
 def team_permissions(user: dict, team_id: int) -> set[str]:
     for membership in user.get("team_roles") or []:
         if membership.get("team_id") == team_id:
-            return set(membership.get("permissions") or [])
+            return (
+                set(TEAM_LEADER_PERMISSIONS)
+                if membership.get("is_leader") else set()
+            )
     return set()
 
 
 def can_manage_team(user: dict, team_id: int) -> bool:
     return (
         "team.manage" in (user.get("permissions") or [])
-        or "team.lead" in team_permissions(user, team_id)
+        or any(
+            membership.get("team_id") == team_id
+            and membership.get("is_leader")
+            for membership in user.get("team_roles") or []
+        )
     )
 

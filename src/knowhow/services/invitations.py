@@ -61,6 +61,7 @@ def create_invite(
             JOIN team t ON t.id=%s AND t.organization_id=%s
             JOIN organization o ON o.id=%s
             WHERE r.id=%s AND r.organization_id=%s AND r.code!='owner'
+              AND r.team_only=false
             """,
             (
                 team_id, organization_id, organization_id,
@@ -166,10 +167,10 @@ def accept_invite(
         account = cur.fetchone()
         cur.execute(
             """
-            INSERT INTO team_member(team_id,account_id,role_id)
-            VALUES (%s,%s,%s)
+            INSERT INTO team_member(team_id,account_id,is_leader)
+            VALUES (%s,%s,false)
             """,
-            (invite["team_id"], account["id"], invite["role_id"]),
+            (invite["team_id"], account["id"]),
         )
         cur.execute(
             """
