@@ -7,15 +7,83 @@ from typing import Any
 from knowhow.db import connect
 
 
+def _assert_visible(cur, organization_id: int, account_id: int, knowledge_id: int):
+    cur.execute(
+        """
+        SELECT 1
+        FROM knowledge_unit k
+        WHERE k.id=%s AND k.organization_id=%s
+          AND (
+            EXISTS (
+              SELECT 1 FROM account a
+              JOIN access_role r ON r.id=a.role_id
+              WHERE a.id=%s AND 'data.all'=ANY(r.permissions)
+            )
+            OR k.scope='organization'
+            OR (k.scope='team' AND k.team_id IN (
+              SELECT team_id FROM team_member WHERE account_id=%s
+            ))
+            OR (k.scope='private' AND k.owner_id=%s)
+          )
+        """,
+        (
+            knowledge_id, organization_id, account_id, account_id, account_id,
+        ),
+    )
+    if not cur.fetchone():
+        raise LookupError("知识不存在或无权访问")
+
+
+def _assert_team_scope(cur, organization_id: int, account_id: int, team_id: int):
+    cur.execute(
+        """
+        SELECT 1
+        FROM team t
+        WHERE t.id=%s AND t.organization_id=%s
+          AND (
+            EXISTS (
+              SELECT 1 FROM account a
+              JOIN access_role r ON r.id=a.role_id
+              WHERE a.id=%s AND 'data.all'=ANY(r.permissions)
+            )
+            OR EXISTS (
+              SELECT 1 FROM team_member tm
+              WHERE tm.team_id=t.id AND tm.account_id=%s
+            )
+          )
+        """,
+        (team_id, organization_id, account_id, account_id),
+    )
+    if not cur.fetchone():
+        raise ValueError("团队不存在或无权使用")
+
+
 def list_knowledge(
     organization_id: int,
+    account_id: int,
     *,
     status: str | None = None,
     kind: str | None = None,
     query: str = "",
 ) -> list[dict]:
     where = ["k.organization_id=%s"]
-    params: list[Any] = [organization_id]
+    params: list[Any] = [
+        organization_id, account_id, account_id, account_id,
+    ]
+    where.append("""
+        (
+          EXISTS (
+            SELECT 1 FROM account a
+            JOIN access_role r ON r.id=a.role_id
+            WHERE a.id=%s AND 'data.all'=ANY(r.permissions)
+          )
+          OR k.scope='organization'
+          OR (k.scope='team' AND k.team_id IN (
+            SELECT team_id FROM team_member WHERE account_id=%s
+          ))
+          OR (k.scope='private' AND k.owner_id=%s)
+        )
+    """)
     if status:
         where.append("k.status=%s")
         params.append(status)
@@ -33,9 +101,11 @@ def list_knowledge(
             SELECT k.id, k.kind, k.title, k.question, k.answer, k.status,
                    k.risk_level, k.owner_id, a.display_name AS owner_name,
                    k.evidence_id, k.source_ref, k.valid_until, k.version,
+                   k.scope, k.team_id, t.name AS team_name,
                    k.published_at, k.created_at, k.updated_at
             FROM knowledge_unit k
             LEFT JOIN account a ON a.id=k.owner_id
+            LEFT JOIN team t ON t.id=k.team_id
             WHERE {' AND '.join(where)}
             ORDER BY
               CASE k.status WHEN 'draft' THEN 0 WHEN 'published' THEN 1 ELSE 2 END,
@@ -58,21 +128,30 @@ def create_knowledge(
     risk_level: str,
     source_ref: str = "",
     valid_until: str | None = None,
+    scope: str = "organization",
+    team_id: int | None = None,
     metadata: dict | None = None,
 ) -> dict:
+    if scope not in {"organization", "team", "private"}:
+        raise ValueError("知识可见范围不正确")
+    if scope == "team" and not team_id:
+        raise ValueError("团队知识必须指定团队")
     with connect() as conn, conn.cursor() as cur:
+        if team_id:
+            _assert_team_scope(cur, organization_id, account_id, team_id)
         cur.execute(
             """
             INSERT INTO knowledge_unit
               (organization_id,kind,title,question,answer,status,risk_level,
-               owner_id,source_ref,valid_until,created_by,metadata)
-            VALUES (%s,%s,%s,%s,%s,'draft',%s,%s,%s,%s,%s,%s)
+               owner_id,source_ref,valid_until,created_by,metadata,scope,team_id)
+            VALUES (%s,%s,%s,%s,%s,'draft',%s,%s,%s,%s,%s,%s,%s,%s)
             RETURNING id
             """,
             (
                 organization_id, kind, title.strip(), question.strip(),
                 answer.strip(), risk_level, account_id, source_ref.strip(),
                 valid_until or None, account_id, json.dumps(metadata or {}),
+                scope, team_id if scope == "team" else None,
             ),
         )
         knowledge_id = cur.fetchone()["id"]
@@ -90,20 +169,29 @@ def update_knowledge(
     risk_level: str,
     source_ref: str,
     valid_until: str | None,
+    scope: str,
+    team_id: int | None,
+    account_id: int,
 ) -> dict:
     with connect() as conn, conn.cursor() as cur:
+        _assert_visible(cur, organization_id, account_id, knowledge_id)
+        if scope == "team" and not team_id:
+            raise ValueError("团队知识必须指定团队")
+        if team_id:
+            _assert_team_scope(cur, organization_id, account_id, team_id)
         cur.execute(
             """
             UPDATE knowledge_unit
             SET title=%s, question=%s, answer=%s, risk_level=%s,
                 source_ref=%s, valid_until=%s, version=version+1,
-                status='draft', updated_at=now()
+                scope=%s, team_id=%s, status='draft', updated_at=now()
             WHERE id=%s AND organization_id=%s
             RETURNING id, version
             """,
             (
                 title.strip(), question.strip(), answer.strip(), risk_level,
                 source_ref.strip(), valid_until or None,
+                scope, team_id if scope == "team" else None,
                 knowledge_id, organization_id,
             ),
         )
@@ -116,6 +204,7 @@ def update_knowledge(
 
 def publish_knowledge(organization_id: int, account_id: int, knowledge_id: int) -> dict:
     with connect() as conn, conn.cursor() as cur:
+        _assert_visible(cur, organization_id, account_id, knowledge_id)
         cur.execute(
             """
             SELECT * FROM knowledge_unit
@@ -154,8 +243,13 @@ def publish_knowledge(organization_id: int, account_id: int, knowledge_id: int) 
     return result
 
 
-def archive_knowledge(organization_id: int, knowledge_id: int) -> None:
+def archive_knowledge(
+    organization_id: int,
+    account_id: int,
+    knowledge_id: int,
+) -> None:
     with connect() as conn, conn.cursor() as cur:
+        _assert_visible(cur, organization_id, account_id, knowledge_id)
         cur.execute(
             """
             UPDATE knowledge_unit SET status='archived', updated_at=now()

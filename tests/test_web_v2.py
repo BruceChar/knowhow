@@ -21,6 +21,8 @@ def test_expected_v2_routes_are_registered():
         "/api/knowledge",
         "/api/gaps",
         "/api/team",
+        "/api/teams",
+        "/api/roles",
     ):
         assert path in paths
 

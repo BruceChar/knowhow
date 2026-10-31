@@ -174,10 +174,21 @@
         <div class="panel">
           <div class="panel-head">
             <div><p class="eyebrow">TEAM</p><h2>团队账户</h2></div>
-            <button class="button primary" id="new-account-button">添加成员</button>
+            <div class="button-row">
+              <button class="button ghost" id="new-team-button">新建团队</button>
+              <button class="button primary" id="new-account-button">添加成员</button>
+            </div>
           </div>
           <p class="muted">默认角色：老板、知识负责人、业务员。复杂权限留到确有需要时再配置。</p>
           <div id="team-list" class="team-list"></div>
+        </div>
+        <div class="panel" id="role-panel">
+          <div class="panel-head">
+            <div><p class="eyebrow">ACCESS CONTROL</p><h2>角色与权限</h2></div>
+            <button class="button ghost" id="new-role-button">新建角色</button>
+          </div>
+          <p class="muted">先使用默认角色；需要产品线、财务或客服主管等差异时，再创建自定义角色。</p>
+          <div id="role-list" class="role-list"></div>
         </div>
       </section>
     </main>

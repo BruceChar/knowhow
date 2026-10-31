@@ -79,7 +79,7 @@ def answer_question(
     *,
     channel: str = "web",
 ) -> dict:
-    knowledge = retrieve(organization_id, question)
+    knowledge = retrieve(organization_id, account_id, question)
     decision = answer_decision(question, knowledge)
     answer = ""
     model = "none"

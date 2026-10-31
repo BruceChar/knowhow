@@ -5,6 +5,7 @@ from knowhow.domain import (
     edit_ratio,
     language_mismatch,
 )
+from knowhow.access import ROLE_TEMPLATES, valid_permissions
 
 
 def test_detect_language_and_mismatch():
@@ -42,4 +43,15 @@ def test_dynamic_fact_is_draft_not_auto_send():
 def test_edit_ratio():
     assert edit_ratio("hello", "hello") == 0
     assert edit_ratio("hello", "completely different") > 0.5
+
+
+def test_sales_role_has_no_publish_or_cross_team_permission():
+    sales = set(ROLE_TEMPLATES["sales"]["permissions"])
+    assert "ask.use" in sales
+    assert "knowledge.publish" not in sales
+    assert "data.all" not in sales
+
+
+def test_unknown_permissions_are_discarded():
+    assert valid_permissions(["ask.use", "root.everything"]) == ["ask.use"]
 

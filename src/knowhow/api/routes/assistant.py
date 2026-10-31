@@ -6,7 +6,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from knowhow.api.deps import current_account
+from knowhow.api.deps import require_permission
 from knowhow.services import assistant
 
 router = APIRouter(tags=["assistant"])
@@ -23,7 +23,7 @@ class InteractionUpdateBody(BaseModel):
 
 
 @router.post("/api/ask")
-def ask(body: AskBody, user: dict = Depends(current_account)):
+def ask(body: AskBody, user: dict = Depends(require_permission("ask.use"))):
     return assistant.answer_question(
         user["organization_id"], user["id"],
         body.question.strip(), channel=body.channel,
@@ -34,7 +34,7 @@ def ask(body: AskBody, user: dict = Depends(current_account)):
 def update_interaction(
     interaction_id: int,
     body: InteractionUpdateBody,
-    user: dict = Depends(current_account),
+    user: dict = Depends(require_permission("ask.use")),
 ):
     try:
         return assistant.update_interaction(

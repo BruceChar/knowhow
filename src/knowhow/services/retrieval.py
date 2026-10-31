@@ -20,7 +20,12 @@ def tokens(text: str) -> set[str]:
     return {word for word in result if len(word) > 1 or word.isdigit()}
 
 
-def retrieve(organization_id: int, query: str, limit: int = 5) -> list[dict]:
+def retrieve(
+    organization_id: int,
+    account_id: int,
+    query: str,
+    limit: int = 5,
+) -> list[dict]:
     query_tokens = tokens(query)
     with connect() as conn, conn.cursor() as cur:
         cur.execute(
@@ -30,10 +35,22 @@ def retrieve(organization_id: int, query: str, limit: int = 5) -> list[dict]:
             FROM knowledge_unit
             WHERE organization_id=%s AND status='published'
               AND (valid_until IS NULL OR valid_until >= CURRENT_DATE)
+              AND (
+                EXISTS (
+                  SELECT 1 FROM account a
+                  JOIN access_role r ON r.id=a.role_id
+                  WHERE a.id=%s AND 'data.all'=ANY(r.permissions)
+                )
+                OR scope='organization'
+                OR (scope='team' AND team_id IN (
+                  SELECT team_id FROM team_member WHERE account_id=%s
+                ))
+                OR (scope='private' AND owner_id=%s)
+              )
             ORDER BY updated_at DESC
             LIMIT 500
             """,
-            (organization_id,),
+            (organization_id, account_id, account_id, account_id),
         )
         rows = cur.fetchall()
     scored = []

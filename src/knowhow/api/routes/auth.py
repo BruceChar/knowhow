@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from psycopg.rows import dict_row
 from pydantic import BaseModel, Field
 
+from knowhow.access import ROLE_TEMPLATES
 from knowhow.api.deps import SESSION_COOKIE, current_account
 from knowhow.security import (
     create_session,
@@ -72,19 +73,44 @@ def setup(body: SetupBody, response: Response):
             (body.company_name.strip(), body.industry.strip()),
         )
         organization = cur.fetchone()
+        role_ids = {}
+        for code, template in ROLE_TEMPLATES.items():
+            cur.execute(
+                """
+                INSERT INTO access_role
+                  (organization_id,code,name,builtin,permissions)
+                VALUES (%s,%s,%s,true,%s)
+                RETURNING id
+                """,
+                (
+                    organization["id"], code, template["name"],
+                    template["permissions"],
+                ),
+            )
+            role_ids[code] = cur.fetchone()["id"]
         cur.execute(
             """
             INSERT INTO account
-              (organization_id,username,display_name,password_hash,role)
-            VALUES (%s,%s,%s,%s,'owner')
-            RETURNING id,username,display_name,role
+              (organization_id,username,display_name,password_hash,role,role_id)
+            VALUES (%s,%s,%s,%s,'owner',%s)
+            RETURNING id,username,display_name,role,role_id
             """,
             (
                 organization["id"], body.username.strip(),
                 body.display_name.strip(), hash_password(body.password),
+                role_ids["owner"],
             ),
         )
         account = cur.fetchone()
+        cur.execute(
+            "INSERT INTO team(organization_id,name) VALUES (%s,'销售部') RETURNING id",
+            (organization["id"],),
+        )
+        team_id = cur.fetchone()["id"]
+        cur.execute(
+            "INSERT INTO team_member(team_id,account_id) VALUES (%s,%s)",
+            (team_id, account["id"]),
+        )
         cur.executemany(
             """
             INSERT INTO answer_rule
@@ -118,6 +144,9 @@ def setup(body: SetupBody, response: Response):
             "organization_id": organization["id"],
             "organization_name": organization["name"],
             "default_language": "zh-CN",
+            "role_name": ROLE_TEMPLATES["owner"]["name"],
+            "permissions": ROLE_TEMPLATES["owner"]["permissions"],
+            "team_ids": [team_id],
         },
     }
 
@@ -129,8 +158,16 @@ def login(body: LoginBody, response: Response):
     ) as conn, conn.cursor() as cur:
         cur.execute(
             """
-            SELECT a.*,o.name AS organization_name,o.default_language
-            FROM account a JOIN organization o ON o.id=a.organization_id
+            SELECT a.*,r.id AS role_id,r.code AS role,r.name AS role_name,
+                   r.permissions,
+                   ARRAY(
+                     SELECT tm.team_id FROM team_member tm
+                     WHERE tm.account_id=a.id ORDER BY tm.team_id
+                   ) AS team_ids,
+                   o.name AS organization_name,o.default_language
+            FROM account a
+            JOIN access_role r ON r.id=a.role_id
+            JOIN organization o ON o.id=a.organization_id
             WHERE a.username=%s
             """,
             (body.username.strip(),),

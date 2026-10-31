@@ -56,11 +56,18 @@ def session_account(token: str) -> dict | None:
     if not token:
         return None
     query = """
-        SELECT a.id, a.organization_id, a.username, a.display_name, a.role,
+        SELECT a.id, a.organization_id, a.username, a.display_name,
                a.must_change_password,
+               r.id AS role_id, r.code AS role, r.name AS role_name,
+               r.permissions,
+               ARRAY(
+                 SELECT tm.team_id FROM team_member tm
+                 WHERE tm.account_id=a.id ORDER BY tm.team_id
+               ) AS team_ids,
                o.name AS organization_name, o.default_language
         FROM session s
         JOIN account a ON a.id=s.account_id
+        JOIN access_role r ON r.id=a.role_id
         JOIN organization o ON o.id=a.organization_id
         WHERE s.token_hash=%s AND s.expires_at>now() AND a.enabled
     """

@@ -4,6 +4,8 @@ const state = {
   knowledge: [],
   gaps: [],
   team: [],
+  roles: [],
+  teams: [],
   lastInteraction: null,
 };
 
@@ -38,6 +40,19 @@ const roleLabels = {
   steward: "知识负责人",
   sales: "业务员",
   admin: "管理员",
+};
+
+const permissionLabels = {
+  "ask.use": "使用销售问答",
+  "knowledge.view": "查看知识",
+  "knowledge.suggest": "提交知识草稿",
+  "knowledge.edit": "编辑知识",
+  "knowledge.publish": "发布知识",
+  "gap.manage": "处理知识缺口",
+  "dashboard.view": "查看经营看板",
+  "team.manage": "管理团队成员",
+  "role.manage": "管理角色权限",
+  "data.all": "查看全部团队数据",
 };
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -107,7 +122,7 @@ function enterApp(user) {
   $("#org-name").textContent = user.organization_name || "";
   $("#user-label").textContent = `${user.display_name} · ${roleLabels[user.role] || user.role}`;
   configureNavigation();
-  const firstPage = ["owner", "steward", "admin"].includes(user.role) ? "today" : "ask";
+  const firstPage = (user.permissions || []).includes("dashboard.view") ? "today" : "ask";
   showPage(firstPage);
   if (user.must_change_password) {
     showToast("这是初始密码，请尽快修改", true);
@@ -115,10 +130,19 @@ function enterApp(user) {
 }
 
 function configureNavigation() {
-  const role = state.user.role;
-  const isManager = ["owner", "steward", "admin"].includes(role);
-  $('[data-page="today"]').hidden = !isManager;
-  $('[data-page="team"]').hidden = !["owner", "admin"].includes(role);
+  $('[data-page="today"]').hidden = !hasPermission("dashboard.view");
+  $('[data-page="team"]').hidden = !hasPermission("team.manage");
+  $("#role-panel").hidden = !hasPermission("role.manage");
+}
+
+function hasPermission(code) {
+  return (state.user?.permissions || []).includes(code);
+}
+
+function scopeLabel(scope, teamName) {
+  if (scope === "private") return "仅自己可见";
+  if (scope === "team") return `团队可见 · ${teamName || "未指定团队"}`;
+  return "全公司可见";
 }
 
 async function showPage(name) {
@@ -264,19 +288,19 @@ async function loadKnowledge() {
 }
 
 function renderKnowledge() {
-  const canReview = ["owner", "steward", "admin"].includes(state.user.role);
+  const canPublish = hasPermission("knowledge.publish");
   $("#knowledge-list").innerHTML = state.knowledge.map(item => `
     <article class="knowledge-item">
       <div class="kind-label">${esc(kindLabels[item.kind] || item.kind)}</div>
       <div>
         <h4>${esc(item.title)}</h4>
         <p>${esc(item.answer).slice(0, 180)}</p>
-        <p>版本 ${item.version} · ${esc(item.owner_name || "未指定负责人")} ${item.valid_until ? `· 有效期至 ${esc(item.valid_until)}` : ""}</p>
+        <p>版本 ${item.version} · ${esc(item.owner_name || "未指定负责人")} · ${esc(scopeLabel(item.scope, item.team_name))} ${item.valid_until ? `· 有效期至 ${esc(item.valid_until)}` : ""}</p>
       </div>
       <div>
         <span class="pill status-${esc(item.status)}">${esc(statusLabels[item.status] || item.status)}</span>
-        ${canReview && item.status !== "published" ? `<button class="text-button publish-knowledge" data-id="${item.id}">发布</button>` : ""}
-        ${canReview && item.status === "published" ? `<button class="text-button archive-knowledge" data-id="${item.id}">归档</button>` : ""}
+        ${canPublish && item.status !== "published" ? `<button class="text-button publish-knowledge" data-id="${item.id}">发布</button>` : ""}
+        ${canPublish && item.status === "published" ? `<button class="text-button archive-knowledge" data-id="${item.id}">归档</button>` : ""}
       </div>
     </article>
   `).join("") || '<p class="muted">还没有知识。先新建一条标准问答，或批量导入。</p>';
@@ -303,6 +327,7 @@ function renderKnowledge() {
 }
 
 async function createKnowledge() {
+  await ensureTeams();
   const result = await openDialog({
     title: "新建知识",
     description: "先保存为草稿，确认来源和适用边界后再发布。",
@@ -312,11 +337,14 @@ async function createKnowledge() {
       { name: "question", label: "客户问题", type: "textarea", placeholder: "客户通常会怎么问？" },
       { name: "answer", label: "标准答案", type: "textarea", required: true, placeholder: "必须来自确认过的业务事实。" },
       { name: "risk_level", label: "风险", type: "select", value: "low", options: [{ value: "low", label: "低" }, { value: "medium", label: "中" }, { value: "high", label: "高风险" }] },
+      { name: "scope", label: "可见范围", type: "select", value: "organization", options: [{ value: "organization", label: "全公司" }, { value: "team", label: "指定团队" }, { value: "private", label: "仅自己" }] },
+      { name: "team_id", label: "团队（选择团队可见时使用）", type: "select", options: state.teams.map(team => ({ value: String(team.id), label: team.name })) },
       { name: "source_ref", label: "来源依据", placeholder: "文件、邮件或负责人确认记录" },
     ],
     submitText: "保存草稿",
   });
   if (!result) return;
+  result.team_id = result.scope === "team" ? Number(result.team_id) : null;
   try {
     await api("/api/knowledge", {
       method: "POST",
@@ -366,7 +394,7 @@ async function loadGaps() {
 }
 
 function renderGaps() {
-  const canResolve = ["owner", "steward", "admin"].includes(state.user.role);
+  const canResolve = hasPermission("gap.manage");
   $("#gap-list").innerHTML = state.gaps.map(gap => `
     <article class="gap-item">
       <div>
@@ -430,9 +458,14 @@ async function ignoreGap(id) {
 
 async function loadTeam() {
   try {
-    const data = await api("/api/team");
+    const requests = [api("/api/team"), api("/api/teams")];
+    if (hasPermission("role.manage")) requests.push(api("/api/roles"));
+    const [data, teams, roles] = await Promise.all(requests);
     state.team = data.items;
+    state.teams = teams.items;
+    state.roles = roles?.items || [];
     renderTeam();
+    renderRoles();
   } catch (error) {
     showToast(error.message, true);
   }
@@ -441,13 +474,15 @@ async function loadTeam() {
 function renderTeam() {
   $("#team-list").innerHTML = state.team.map(account => `
     <article class="team-item">
-      <div><strong>${esc(account.display_name)}</strong><p class="muted small">${esc(account.username)} · ${esc(roleLabels[account.role] || account.role)}</p></div>
+      <div><strong>${esc(account.display_name)}</strong><p class="muted small">${esc(account.username)} · ${esc(account.role_name || roleLabels[account.role] || account.role)} · ${esc((account.team_names || []).join("、") || "未分配团队")}</p></div>
       <div class="button-row">
         <span class="pill">${account.enabled ? "启用" : "停用"}</span>
+        <button class="button ghost edit-account-teams" data-id="${account.id}">调整团队</button>
         ${account.role !== "owner" ? `<button class="button ghost toggle-account" data-id="${account.id}" data-enabled="${account.enabled}">${account.enabled ? "停用" : "启用"}</button>` : ""}
       </div>
     </article>
   `).join("");
+  $$(".edit-account-teams").forEach(button => button.addEventListener("click", () => editAccountTeams(Number(button.dataset.id))));
   $$(".toggle-account").forEach(button => button.addEventListener("click", async () => {
     const enabled = button.dataset.enabled !== "true";
     if (!enabled) {
@@ -467,6 +502,7 @@ function renderTeam() {
 }
 
 async function createAccount() {
+  if (!state.roles.length) await loadTeam();
   const result = await openDialog({
     title: "添加团队成员",
     description: "首次登录后建议修改临时密码。",
@@ -474,17 +510,136 @@ async function createAccount() {
       { name: "display_name", label: "姓名", required: true },
       { name: "username", label: "登录名", required: true, pattern: "^[a-zA-Z0-9_.-]{3,}$", error: "至少 3 位，仅支持字母、数字、点、横线和下划线" },
       { name: "password", label: "初始密码", inputType: "password", required: true },
-      { name: "role", label: "角色", type: "select", value: "sales", options: [{ value: "sales", label: "业务员" }, { value: "steward", label: "知识负责人" }, { value: "admin", label: "管理员" }] },
+      { name: "role_id", label: "角色", type: "select", required: true, value: String(state.roles.find(role => role.code === "sales")?.id || ""), options: state.roles.filter(role => role.code !== "owner").map(role => ({ value: String(role.id), label: role.name })) },
+      { name: "team_ids", label: "所属团队", type: "multiselect", value: state.teams.length ? [state.teams[0].id] : [], options: state.teams.map(team => ({ value: String(team.id), label: team.name })) },
     ],
     submitText: "创建账户",
   });
   if (!result) return;
+  result.role_id = Number(result.role_id);
+  result.team_ids = result.team_ids.map(Number);
   try {
     await api("/api/team", { method: "POST", body: JSON.stringify(result) });
     showToast("团队成员已创建");
     await loadTeam();
   } catch (error) {
     showToast(error.message, true);
+  }
+}
+
+async function createTeam() {
+  const result = await openDialog({
+    title: "新建团队",
+    description: "团队用于隔离不同产品线、区域或业务小组的知识。",
+    fields: [{ name: "name", label: "团队名称", required: true, placeholder: "例如：宠物用品组" }],
+    submitText: "创建团队",
+  });
+  if (!result) return;
+  try {
+    await api("/api/teams", { method: "POST", body: JSON.stringify(result) });
+    showToast("团队已创建");
+    await loadTeam();
+  } catch (error) {
+    showToast(error.message, true);
+  }
+}
+
+async function editAccountTeams(accountId) {
+  const account = state.team.find(item => item.id === accountId);
+  if (!account) return;
+  const current = state.teams.filter(team => (account.team_names || []).includes(team.name)).map(team => String(team.id));
+  const result = await openDialog({
+    title: `调整团队 · ${account.display_name}`,
+    description: "团队成员将看到所属团队的 team 范围知识。",
+    fields: [{
+      name: "team_ids", label: "所属团队", type: "multiselect",
+      value: current,
+      options: state.teams.map(team => ({ value: String(team.id), label: team.name })),
+    }],
+    submitText: "保存团队",
+  });
+  if (!result) return;
+  result.team_ids = result.team_ids.map(Number);
+  try {
+    await api(`/api/team/${accountId}/teams`, {
+      method: "PUT", body: JSON.stringify(result),
+    });
+    showToast("成员团队已更新，该成员需要重新登录");
+    await loadTeam();
+  } catch (error) {
+    showToast(error.message, true);
+  }
+}
+
+function renderRoles() {
+  if (!hasPermission("role.manage")) return;
+  $("#role-list").innerHTML = state.roles.map(role => `
+    <article class="role-item">
+      <div class="role-item-head">
+        <div><strong>${esc(role.name)}</strong> <span class="muted small">${esc(role.code)}${role.builtin ? " · 内置模板" : ""}</span></div>
+        ${role.code !== "owner" ? `<button class="text-button edit-role" data-id="${role.id}">编辑权限</button>` : '<span class="pill">不可修改</span>'}
+      </div>
+      <div class="permission-chips">
+        ${(role.permissions || []).map(code => `<span class="permission-chip">${esc(permissionLabels[code] || code)}</span>`).join("") || '<span class="muted small">未分配权限</span>'}
+      </div>
+    </article>
+  `).join("");
+  $$(".edit-role").forEach(button => button.addEventListener("click", () => editRolePermissions(Number(button.dataset.id))));
+}
+
+async function createRole() {
+  const result = await openDialog({
+    title: "新建角色",
+    description: "角色用于业务差异，不要求老板理解技术权限模型。",
+    fields: [
+      { name: "name", label: "角色名称", required: true, placeholder: "例如：宠物用品业务员" },
+      { name: "code", label: "角色编码", required: true, pattern: "^[a-z][a-z0-9_]*$", error: "需以小写字母开头，仅支持小写字母、数字和下划线" },
+      { name: "permissions", label: "权限", type: "multiselect", value: ["ask.use", "knowledge.view", "knowledge.suggest"], options: Object.entries(permissionLabels).map(([value, label]) => ({ value, label })) },
+    ],
+    submitText: "创建角色",
+  });
+  if (!result) return;
+  try {
+    await api("/api/roles", { method: "POST", body: JSON.stringify(result) });
+    showToast("角色已创建");
+    await loadTeam();
+  } catch (error) {
+    showToast(error.message, true);
+  }
+}
+
+async function editRolePermissions(roleId) {
+  const role = state.roles.find(item => item.id === roleId);
+  if (!role) return;
+  const result = await openDialog({
+    title: `编辑权限 · ${role.name}`,
+    description: "权限只影响功能。知识可见范围由每条知识自己的公司/团队/个人范围控制。",
+    fields: [{
+      name: "permissions", label: "功能权限", type: "multiselect",
+      value: role.permissions || [],
+      options: Object.entries(permissionLabels).map(([value, label]) => ({ value, label })),
+    }],
+    submitText: "保存权限",
+  });
+  if (!result) return;
+  try {
+    await api(`/api/roles/${roleId}/permissions`, {
+      method: "PUT", body: JSON.stringify(result),
+    });
+    showToast("角色权限已更新");
+    await loadTeam();
+  } catch (error) {
+    showToast(error.message, true);
+  }
+}
+
+async function ensureTeams() {
+  if (state.teams.length) return;
+  try {
+    const data = await api("/api/teams");
+    state.teams = data.items || [];
+  } catch (_) {
+    state.teams = [];
   }
 }
 
@@ -559,6 +714,11 @@ function openDialog({ title, description = "", fields = [], submitText = "保存
       error.style.display = "none";
       for (let index = 0; index < fields.length; index += 1) {
         const field = fields[index];
+        if (field.type === "multiselect") {
+          values[field.name] = $$(`input[data-dialog-field="${index}"]:checked`)
+            .map(input => input.value);
+          continue;
+        }
         const input = $(`#dialog-field-${index}`);
         const value = input.value.trim();
         if (field.required && !value) {
@@ -587,6 +747,13 @@ function dialogField(field, index) {
   let control;
   if (field.type === "textarea") {
     control = `<textarea id="${id}" placeholder="${esc(field.placeholder || "")}">${esc(field.value || "")}</textarea>`;
+  } else if (field.type === "multiselect") {
+    const selected = new Set(field.value || []);
+    control = `<div class="permission-grid">${(field.options || []).map(option => {
+      const value = typeof option === "string" ? option : option.value;
+      const label = typeof option === "string" ? option : option.label;
+      return `<label class="permission-option"><input type="checkbox" data-dialog-field="${index}" value="${esc(value)}" ${selected.has(value) ? "checked" : ""}>${esc(label)}</label>`;
+    }).join("")}</div>`;
   } else if (field.type === "select") {
     control = `<select id="${id}">${(field.options || []).map(option => {
       const value = typeof option === "string" ? option : option.value;
@@ -645,6 +812,8 @@ $("#new-knowledge-button").addEventListener("click", createKnowledge);
 $("#import-knowledge-button").addEventListener("click", importKnowledge);
 $("#gap-status").addEventListener("change", loadGaps);
 $("#new-account-button").addEventListener("click", createAccount);
+$("#new-team-button").addEventListener("click", createTeam);
+$("#new-role-button").addEventListener("click", createRole);
 
 boot();
 
