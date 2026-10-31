@@ -40,6 +40,23 @@ def language_mismatch(question: str, answer: str) -> bool:
     return latin >= 15 and latin > cjk * 3
 
 
+def is_company_product_question(question: str) -> bool:
+    """Detect questions that should be answered from the product catalog."""
+    lowered = (question or "").strip().lower()
+    chinese_intents = (
+        "主营产品", "主要产品", "主营业务", "主营什么", "产品有哪些",
+        "产品有什么", "卖什么", "做什么产品", "产品线", "经营范围",
+    )
+    english_intents = (
+        "what products", "which products", "product range", "product line",
+        "what do you sell", "what does your company do", "main products",
+        "main product categories",
+    )
+    return any(term in lowered for term in chinese_intents) or any(
+        term in lowered for term in english_intents
+    )
+
+
 def answer_decision(question: str, knowledge: list[dict]) -> AnswerDecision:
     lowered = question.lower()
     if not knowledge:

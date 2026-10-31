@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.knowhow.v2</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/bruce/python/knowhow/.venv/bin/python</string>
+    <string>-m</string>
+    <string>uvicorn</string>
+    <string>knowhow.main:app</string>
+    <string>--host</string>
+    <string>0.0.0.0</string>
+    <string>--port</string>
+    <string>8000</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/bruce/python/knowhow</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HF_HUB_OFFLINE</key>
+    <string>1</string>
+    <key>PYTHONPATH</key>
+    <string>src</string>
+    <key>PYTHONUNBUFFERED</key>
+    <string>1</string>
+  </dict>
+
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/knowhow-v2.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/tmp/knowhow-v2.err.log</string>
+</dict>
+</plist>

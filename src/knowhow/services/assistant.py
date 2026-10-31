@@ -12,10 +12,15 @@ from knowhow.domain import (
     HIGH_RISK_TERMS,
     answer_decision,
     detect_language,
+    is_company_product_question,
     language_mismatch,
 )
 from knowhow.services.retrieval import retrieve_with_meta
-from knowhow.services.facts import lookup_facts
+from knowhow.services.facts import (
+    format_product_overview,
+    lookup_facts,
+    product_overview,
+)
 from knowhow.settings import settings
 
 
@@ -104,13 +109,30 @@ def answer_question(
     *,
     channel: str = "web",
 ) -> dict:
-    knowledge, retrieval_meta = retrieve_with_meta(
-        organization_id, account_id, question,
+    overview = (
+        product_overview(organization_id)
+        if is_company_product_question(question) else None
     )
-    decision = answer_decision(question, knowledge)
-    fact_rows = lookup_facts(organization_id, question) if any(
-        term in question.lower() for term in DYNAMIC_FACT_TERMS
-    ) else []
+    if not overview or not overview["categories"]:
+        overview = None
+        knowledge, retrieval_meta = retrieve_with_meta(
+            organization_id, account_id, question,
+        )
+        decision = answer_decision(question, knowledge)
+        fact_rows = lookup_facts(organization_id, question) if any(
+            term in question.lower() for term in DYNAMIC_FACT_TERMS
+        ) else []
+    else:
+        knowledge = []
+        retrieval_meta = {
+            "mode": "structured",
+            "product_count": overview["product_count"],
+            "category_count": len(overview["categories"]),
+        }
+        decision = AnswerDecision(
+            "draft", "根据当前产品目录汇总生成", "low",
+        )
+        fact_rows = []
     if fact_rows and not any(term in question.lower() for term in HIGH_RISK_TERMS):
         decision = AnswerDecision(
             "draft", "价格和交期来自已发布产品事实，发送前需业务员确认", "medium",
@@ -126,7 +148,18 @@ def answer_question(
         }
         for item in knowledge
     ]
-    if fact_rows and decision.status != "escalated":
+    if overview:
+        answer = format_product_overview(
+            overview, detect_language(question),
+        )
+        model = "product-catalog-summary"
+        citations = [{
+            "id": "product-catalog",
+            "title": f"产品目录汇总 · {overview['product_count']} 个 SKU",
+            "kind": "product_catalog",
+            "risk_level": "low",
+        }]
+    elif fact_rows and decision.status != "escalated":
         answer = _fact_answer(fact_rows)
         model = "approved-fact-template"
         decision = AnswerDecision(

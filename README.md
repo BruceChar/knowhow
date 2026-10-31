@@ -93,3 +93,14 @@ PYTHONPATH=src .venv/bin/python scripts/import_v1_backup.py
 脚本要求源 V1 数据库可通过 `--source-url` 访问，并默认把数据写入当前
 `KNOWHOW_DATABASE_URL`。迁移前请先用 `scripts/backup.sh` 备份目标数据库。
 
+## macOS 常驻服务
+
+当前仓库地址下的 macOS 用户可通过 launchd 常驻运行 V2：
+
+```bash
+launchctl bootstrap gui/$(id -u) scripts/com.knowhow.v2.plist
+launchctl kickstart -k gui/$(id -u)/com.knowhow.v2
+```
+
+日志位于 `/tmp/knowhow-v2.out.log` 和 `/tmp/knowhow-v2.err.log`。
+

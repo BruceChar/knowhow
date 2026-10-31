@@ -3,6 +3,7 @@ from knowhow.domain import (
     answer_decision,
     detect_language,
     edit_ratio,
+    is_company_product_question,
     language_mismatch,
 )
 from knowhow.access import ROLE_TEMPLATES, valid_permissions
@@ -43,6 +44,12 @@ def test_dynamic_fact_is_draft_not_auto_send():
     )
     assert decision.status == "draft"
     assert decision.risk == "medium"
+
+
+def test_company_product_overview_intent():
+    assert is_company_product_question("公司主营产品有哪些")
+    assert is_company_product_question("What is your product range?")
+    assert not is_company_product_question("Can we put our logo on this SKU?")
 
 
 def test_edit_ratio():

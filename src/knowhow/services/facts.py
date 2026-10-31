@@ -153,3 +153,71 @@ def lookup_facts(organization_id: int, question: str) -> list[dict]:
         )
         return cur.fetchall()
 
+
+def product_overview(organization_id: int) -> dict:
+    """Return a grounded company range based on published product master data."""
+    with connect() as conn, conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT count(*)::int AS product_count
+            FROM product
+            WHERE organization_id=%s AND status='published'
+            """,
+            (organization_id,),
+        )
+        product_count = cur.fetchone()["product_count"]
+        cur.execute(
+            """
+            SELECT
+              CASE WHEN category='Leash' THEN '牵引绳'
+                   ELSE NULLIF(trim(category),'') END AS category,
+              count(*)::int AS product_count
+            FROM product
+            WHERE organization_id=%s AND status='published'
+              AND NULLIF(trim(category),'') IS NOT NULL
+            GROUP BY 1
+            ORDER BY product_count DESC, category
+            """,
+            (organization_id,),
+        )
+        categories = cur.fetchall()
+        cur.execute(
+            "SELECT name,industry FROM organization WHERE id=%s",
+            (organization_id,),
+        )
+        organization = cur.fetchone()
+    return {
+        "organization_name": organization["name"] if organization else "",
+        "industry": organization["industry"] if organization else "",
+        "product_count": product_count,
+        "categories": categories,
+    }
+
+
+def format_product_overview(overview: dict, language: str = "zh") -> str:
+    categories = overview.get("categories") or []
+    total = overview.get("product_count") or 0
+    if not categories:
+        return ""
+    shown = categories[:10]
+    items = "、".join(
+        f"{item['category']}（{item['product_count']} 个 SKU）"
+        for item in shown
+    )
+    company = overview.get("organization_name") or "公司"
+    industry = overview.get("industry") or "产品"
+    if language == "en":
+        return (
+            f"{company} operates in {industry}. The published catalog "
+            f"contains {total} SKUs across {len(categories)} categories.\n"
+            f"Main categories: {items}.\n\n"
+            "Provide a category or SKU for model-level details. Prices, MOQ and "
+            "lead time require a current approved quotation."
+        )
+    return (
+        f"{company}目前经营{industry}，已发布产品目录包含 {total} 个 SKU，"
+        f"覆盖 {len(categories)} 个品类。\n"
+        f"主要产品线包括：{items}。\n\n"
+        "如需确认具体型号，请提供品类或 SKU；价格、MOQ 和交期需按当前有效报价确认。"
+    )
+
