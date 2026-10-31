@@ -12,6 +12,7 @@ PERMISSIONS = {
     "team.manage": "管理团队成员",
     "role.manage": "管理角色权限",
     "data.all": "查看全部团队数据",
+    "training.use": "使用新人训练",
 }
 
 ROLE_TEMPLATES = {
@@ -29,11 +30,14 @@ ROLE_TEMPLATES = {
             "ask.use", "knowledge.view", "knowledge.suggest",
             "knowledge.edit", "knowledge.publish", "gap.manage",
             "dashboard.view", "data.all",
+            "training.use",
         ],
     },
     "sales": {
         "name": "业务员",
-        "permissions": ["ask.use", "knowledge.view", "knowledge.suggest"],
+        "permissions": [
+            "ask.use", "knowledge.view", "knowledge.suggest", "training.use",
+        ],
     },
 }
 

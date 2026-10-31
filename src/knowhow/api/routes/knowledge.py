@@ -22,6 +22,7 @@ class KnowledgeBody(BaseModel):
     valid_until: str | None = None
     scope: Literal["organization", "team", "private"] = "organization"
     team_id: int | None = None
+    owner_id: int | None = None
     metadata: dict = Field(default_factory=dict)
 
 
@@ -67,6 +68,13 @@ def create_knowledge(
         raise HTTPException(400, str(exc)) from exc
 
 
+@router.get("/api/knowledge/owners")
+def list_owners(
+    user: dict = Depends(require_permission("knowledge.edit")),
+):
+    return {"items": knowledge.list_owners(user["organization_id"])}
+
+
 @router.put("/api/knowledge/{knowledge_id}")
 def update_knowledge(
     knowledge_id: int,
@@ -107,6 +115,21 @@ def archive_knowledge(
         return {"ok": True}
     except LookupError as exc:
         raise HTTPException(404, str(exc)) from exc
+
+
+@router.post("/api/knowledge/{knowledge_id}/embedding")
+def rebuild_embedding(
+    knowledge_id: int,
+    user: dict = Depends(require_permission("knowledge.edit")),
+):
+    try:
+        return knowledge.rebuild_embedding(
+            user["organization_id"], knowledge_id,
+        )
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc)) from exc
 
 
 @router.post("/api/knowledge/import-text")

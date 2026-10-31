@@ -6,6 +6,7 @@ from knowhow.domain import (
     language_mismatch,
 )
 from knowhow.access import ROLE_TEMPLATES, valid_permissions
+from knowhow.services.retrieval import weighted_rrf
 
 
 def test_detect_language_and_mismatch():
@@ -54,4 +55,13 @@ def test_sales_role_has_no_publish_or_cross_team_permission():
 
 def test_unknown_permissions_are_discarded():
     assert valid_permissions(["ask.use", "root.everything"]) == ["ask.use"]
+
+
+def test_weighted_rrf_merges_vector_and_lexical_results():
+    vector = [{"id": 1, "title": "semantic"}, {"id": 2, "title": "both"}]
+    lexical = [{"id": 2, "title": "both"}, {"id": 3, "title": "exact"}]
+    result = weighted_rrf(vector, lexical, limit=3)
+    assert [item["id"] for item in result][0] == 2
+    assert set(result[0]["matched_by"]) == {"vector", "lexical"}
+    assert all("rrf_score" in item for item in result)
 

@@ -11,7 +11,9 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from knowhow.api.deps import SESSION_COOKIE
-from knowhow.api.routes import assistant, auth, dashboard, knowledge, team
+from knowhow.api.routes import (
+    assistant, auth, dashboard, imports, knowledge, team, training,
+)
 from knowhow.settings import settings
 
 WEB_DIR = Path(__file__).resolve().parent / "web"
@@ -56,7 +58,7 @@ def health():
     }
 
 
-for module in (auth, dashboard, knowledge, assistant, team):
+for module in (auth, dashboard, knowledge, imports, assistant, team, training):
     app.include_router(module.router)
 
 

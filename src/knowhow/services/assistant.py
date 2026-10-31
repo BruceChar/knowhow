@@ -12,7 +12,7 @@ from knowhow.domain import (
     detect_language,
     language_mismatch,
 )
-from knowhow.services.retrieval import retrieve
+from knowhow.services.retrieval import retrieve_with_meta
 from knowhow.settings import settings
 
 
@@ -79,7 +79,9 @@ def answer_question(
     *,
     channel: str = "web",
 ) -> dict:
-    knowledge = retrieve(organization_id, account_id, question)
+    knowledge, retrieval_meta = retrieve_with_meta(
+        organization_id, account_id, question,
+    )
     decision = answer_decision(question, knowledge)
     answer = ""
     model = "none"
@@ -144,6 +146,7 @@ def answer_question(
         "risk": decision.risk,
         "model": model,
         "citations": citations,
+        "retrieval": retrieval_meta,
     }
 
 

@@ -5,6 +5,17 @@ import json
 from typing import Any
 
 from knowhow.db import connect
+from knowhow.services.embeddings import (
+    EmbeddingUnavailable,
+    embed_text,
+    model_name,
+    pgvector_literal,
+)
+import re
+
+
+def _normalize_key(value: str) -> str:
+    return re.sub(r"\s+", "", (value or "").strip().lower())
 
 
 def _assert_visible(cur, organization_id: int, account_id: int, knowledge_id: int):
@@ -102,6 +113,7 @@ def list_knowledge(
                    k.risk_level, k.owner_id, a.display_name AS owner_name,
                    k.evidence_id, k.source_ref, k.valid_until, k.version,
                    k.scope, k.team_id, t.name AS team_name,
+                   k.embedding_model, k.embedding_updated_at,
                    k.published_at, k.created_at, k.updated_at
             FROM knowledge_unit k
             LEFT JOIN account a ON a.id=k.owner_id
@@ -130,6 +142,7 @@ def create_knowledge(
     valid_until: str | None = None,
     scope: str = "organization",
     team_id: int | None = None,
+    owner_id: int | None = None,
     metadata: dict | None = None,
 ) -> dict:
     if scope not in {"organization", "team", "private"}:
@@ -137,8 +150,33 @@ def create_knowledge(
     if scope == "team" and not team_id:
         raise ValueError("团队知识必须指定团队")
     with connect() as conn, conn.cursor() as cur:
+        responsible_id = owner_id or account_id
+        cur.execute(
+            "SELECT 1 FROM account WHERE id=%s AND organization_id=%s",
+            (responsible_id, organization_id),
+        )
+        if not cur.fetchone():
+            raise ValueError("知识负责人不存在")
         if team_id:
             _assert_team_scope(cur, organization_id, account_id, team_id)
+        cur.execute(
+            """
+            SELECT id,title,answer FROM knowledge_unit
+            WHERE organization_id=%s
+              AND (
+                regexp_replace(lower(question),'\\s+','','g')=%s
+                OR regexp_replace(lower(title),'\\s+','','g')=%s
+              )
+            LIMIT 5
+            """,
+            (organization_id, _normalize_key(question), _normalize_key(title)),
+        )
+        conflicts = cur.fetchall()
+        if any(
+            _normalize_key(item["answer"]) == _normalize_key(answer)
+            for item in conflicts
+        ):
+            raise ValueError("知识库已存在相同问答")
         cur.execute(
             """
             INSERT INTO knowledge_unit
@@ -149,14 +187,18 @@ def create_knowledge(
             """,
             (
                 organization_id, kind, title.strip(), question.strip(),
-                answer.strip(), risk_level, account_id, source_ref.strip(),
+                answer.strip(), risk_level, responsible_id, source_ref.strip(),
                 valid_until or None, account_id, json.dumps(metadata or {}),
                 scope, team_id if scope == "team" else None,
             ),
         )
         knowledge_id = cur.fetchone()["id"]
         conn.commit()
-    return {"id": knowledge_id, "status": "draft"}
+    return {
+        "id": knowledge_id,
+        "status": "draft",
+        "potential_conflicts": conflicts,
+    }
 
 
 def update_knowledge(
@@ -172,6 +214,7 @@ def update_knowledge(
     scope: str,
     team_id: int | None,
     account_id: int,
+    owner_id: int | None = None,
 ) -> dict:
     with connect() as conn, conn.cursor() as cur:
         _assert_visible(cur, organization_id, account_id, knowledge_id)
@@ -179,11 +222,18 @@ def update_knowledge(
             raise ValueError("团队知识必须指定团队")
         if team_id:
             _assert_team_scope(cur, organization_id, account_id, team_id)
+        responsible_id = owner_id or account_id
+        cur.execute(
+            "SELECT 1 FROM account WHERE id=%s AND organization_id=%s",
+            (responsible_id, organization_id),
+        )
+        if not cur.fetchone():
+            raise ValueError("知识负责人不存在")
         cur.execute(
             """
             UPDATE knowledge_unit
             SET title=%s, question=%s, answer=%s, risk_level=%s,
-                source_ref=%s, valid_until=%s, version=version+1,
+                source_ref=%s, valid_until=%s, owner_id=%s, version=version+1,
                 scope=%s, team_id=%s, status='draft', updated_at=now()
             WHERE id=%s AND organization_id=%s
             RETURNING id, version
@@ -191,7 +241,7 @@ def update_knowledge(
             (
                 title.strip(), question.strip(), answer.strip(), risk_level,
                 source_ref.strip(), valid_until or None,
-                scope, team_id if scope == "team" else None,
+                responsible_id, scope, team_id if scope == "team" else None,
                 knowledge_id, organization_id,
             ),
         )
@@ -228,15 +278,74 @@ def publish_knowledge(organization_id: int, account_id: int, knowledge_id: int) 
             (knowledge_id, row["version"], json.dumps(snapshot, default=str),
              account_id),
         )
+        embedding = None
+        embedding_error = ""
+        try:
+            vector = embed_text(
+                "\n".join((
+                    row["title"] or "", row["question"] or "",
+                    row["answer"] or "",
+                ))
+            )
+            embedding = pgvector_literal(vector)
+        except EmbeddingUnavailable as exc:
+            embedding_error = str(exc)
         cur.execute(
             """
             UPDATE knowledge_unit
             SET status='published', approved_by=%s, published_at=now(),
+                embedding=%s::vector,
+                embedding_model=CASE WHEN %s::text IS NULL THEN NULL ELSE %s END,
+                embedding_updated_at=CASE
+                  WHEN %s::text IS NULL THEN embedding_updated_at ELSE now()
+                END,
                 updated_at=now()
             WHERE id=%s
-            RETURNING id, version, published_at
+            RETURNING id, version, published_at,
+                      (embedding IS NOT NULL) AS embedding_ready
             """,
-            (account_id, knowledge_id),
+            (
+                account_id, embedding, embedding, model_name(),
+                embedding, knowledge_id,
+            ),
+        )
+        result = cur.fetchone()
+        if embedding_error:
+            result["embedding_error"] = embedding_error
+        conn.commit()
+    return result
+
+
+def rebuild_embedding(organization_id: int, knowledge_id: int) -> dict:
+    with connect() as conn, conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT title,question,answer FROM knowledge_unit
+            WHERE id=%s AND organization_id=%s
+            """,
+            (knowledge_id, organization_id),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise LookupError("知识不存在")
+        try:
+            vector = embed_text(
+                "\n".join((
+                    row["title"] or "", row["question"] or "",
+                    row["answer"] or "",
+                ))
+            )
+        except EmbeddingUnavailable as exc:
+            raise RuntimeError(f"Embedding 不可用：{exc}") from exc
+        cur.execute(
+            """
+            UPDATE knowledge_unit
+            SET embedding=%s::vector, embedding_model=%s,
+                embedding_updated_at=now()
+            WHERE id=%s
+            RETURNING id,embedding_model,embedding_updated_at
+            """,
+            (pgvector_literal(vector), model_name(), knowledge_id),
         )
         result = cur.fetchone()
         conn.commit()
@@ -313,6 +422,20 @@ def list_gaps(organization_id: int, status: str = "open") -> list[dict]:
             LIMIT 200
             """,
             (organization_id, status, status),
+        )
+        return cur.fetchall()
+
+
+def list_owners(organization_id: int) -> list[dict]:
+    with connect() as conn, conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT a.id,a.display_name,r.name AS role_name
+            FROM account a JOIN access_role r ON r.id=a.role_id
+            WHERE a.organization_id=%s AND a.enabled
+            ORDER BY a.id
+            """,
+            (organization_id,),
         )
         return cur.fetchall()
 

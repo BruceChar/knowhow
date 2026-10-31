@@ -6,6 +6,7 @@ const state = {
   team: [],
   roles: [],
   teams: [],
+  owners: [],
   lastInteraction: null,
 };
 
@@ -15,6 +16,7 @@ const pageMeta = {
   knowledge: ["COMPANY BRAIN", "公司知识"],
   review: ["REVIEW INBOX", "待处理"],
   team: ["TEAM", "团队"],
+  training: ["READINESS", "新人训练"],
 };
 
 const kindLabels = {
@@ -53,6 +55,7 @@ const permissionLabels = {
   "team.manage": "管理团队成员",
   "role.manage": "管理角色权限",
   "data.all": "查看全部团队数据",
+  "training.use": "使用新人训练",
 };
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -132,6 +135,7 @@ function enterApp(user) {
 function configureNavigation() {
   $('[data-page="today"]').hidden = !hasPermission("dashboard.view");
   $('[data-page="team"]').hidden = !hasPermission("team.manage");
+  $('[data-page="training"]').hidden = !hasPermission("training.use");
   $("#role-panel").hidden = !hasPermission("role.manage");
 }
 
@@ -156,6 +160,7 @@ async function showPage(name) {
   if (name === "knowledge") await loadKnowledge();
   if (name === "review") await loadGaps();
   if (name === "team") await loadTeam();
+  if (name === "training") await loadTraining();
 }
 
 async function loadDashboard() {
@@ -177,6 +182,7 @@ function renderDashboard(data) {
     [metrics.open_gaps, "待处理缺口"],
     [`${metrics.draft_acceptance}%`, "草稿低修改采用"],
     [metrics.expiring, "14 天内到期"],
+    [metrics.training_score, "训练平均分"],
   ].map(([value, label]) => `
     <div class="metric-card"><strong>${esc(value)}</strong><span>${esc(label)}</span></div>
   `).join("");
@@ -234,7 +240,7 @@ function renderAnswer(data) {
         <span class="answer-badge ${riskClass}">${esc(statusText)}</span>
         <span class="pill">${esc(data.reason)}</span>
       </div>
-      <span class="muted small">交互 #${esc(data.interaction_id)} · ${esc(data.model)}</span>
+      <span class="muted small">交互 #${esc(data.interaction_id)} · ${esc(data.model)} · 检索 ${esc(data.retrieval?.mode || "lexical")}</span>
     </div>
     <textarea class="answer-editor" id="final-answer" placeholder="输入最终要发给客户的回复">${esc(data.answer)}</textarea>
     <div class="citation-list">
@@ -279,9 +285,70 @@ async function loadKnowledge() {
   if (kind) params.set("kind", kind);
   if (query) params.set("q", query);
   try {
-    const data = await api(`/api/knowledge?${params}`);
+    const [data, imports] = await Promise.all([
+      api(`/api/knowledge?${params}`),
+      api("/api/imports"),
+    ]);
     state.knowledge = data.items;
     renderKnowledge();
+    renderImports(imports.items);
+  } catch (error) {
+    showToast(error.message, true);
+  }
+}
+
+function renderImports(items) {
+  $("#import-history").innerHTML = items.map(item => `
+    <article class="knowledge-item">
+      <div class="kind-label">${esc(item.source_type.toUpperCase())}</div>
+      <div><h4>${esc(item.source_name)}</h4><p>${esc(item.status)} · 可导入 ${item.ready_rows} · 重复 ${item.duplicate_rows} · 错误 ${item.error_rows} · 已创建 ${item.created_count}</p></div>
+      <div>${item.status === "preview" && item.ready_rows ? `<button class="text-button execute-import" data-id="${item.id}">继续导入</button>` : ""}</div>
+    </article>
+  `).join("") || '<p class="muted small">还没有文件导入记录。</p>';
+  $$(".execute-import").forEach(button => button.addEventListener("click", () => executeImport(Number(button.dataset.id))));
+}
+
+async function uploadImport(file) {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("source_type", file.name.toLowerCase().includes("wechat") ? "wechat" : "auto");
+  try {
+    const response = await fetch("/api/imports/preview", {
+      method: "POST",
+      headers: { "X-Knowhow-CSRF": "1" },
+      body: form,
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || `导入分析失败 (${response.status})`);
+    const issueSummary = data.issues.slice(0, 5)
+      .map(issue => `第 ${issue.row} 行：${issue.error}`).join("\n");
+    const confirmed = await openDialog({
+      title: "导入预览",
+      description: [
+        `文件：${data.source_name}`,
+        `总行数：${data.total_rows}`,
+        `可导入：${data.ready_rows}`,
+        `重复：${data.duplicate_rows}`,
+        `错误：${data.error_rows}`,
+        issueSummary,
+      ].filter(Boolean).join("\n"),
+      fields: [],
+      submitText: data.ready_rows ? "写入知识草稿" : "关闭",
+    });
+    if (confirmed && data.ready_rows) await executeImport(data.id);
+    await loadKnowledge();
+  } catch (error) {
+    showToast(error.message, true);
+  } finally {
+    $("#import-file-input").value = "";
+  }
+}
+
+async function executeImport(batchId) {
+  try {
+    const result = await api(`/api/imports/${batchId}/execute`, { method: "POST" });
+    showToast(`已导入 ${result.created} 条知识草稿`);
+    await loadKnowledge();
   } catch (error) {
     showToast(error.message, true);
   }
@@ -295,7 +362,7 @@ function renderKnowledge() {
       <div>
         <h4>${esc(item.title)}</h4>
         <p>${esc(item.answer).slice(0, 180)}</p>
-        <p>版本 ${item.version} · ${esc(item.owner_name || "未指定负责人")} · ${esc(scopeLabel(item.scope, item.team_name))} ${item.valid_until ? `· 有效期至 ${esc(item.valid_until)}` : ""}</p>
+        <p>版本 ${item.version} · ${esc(item.owner_name || "未指定负责人")} · ${esc(scopeLabel(item.scope, item.team_name))} ${item.valid_until ? `· 有效期至 ${esc(item.valid_until)}` : ""} · ${item.embedding_model ? "语义索引已就绪" : "仅关键词检索"}</p>
       </div>
       <div>
         <span class="pill status-${esc(item.status)}">${esc(statusLabels[item.status] || item.status)}</span>
@@ -328,6 +395,8 @@ function renderKnowledge() {
 
 async function createKnowledge() {
   await ensureTeams();
+  if (hasPermission("knowledge.edit")) await ensureOwners();
+  const ownerOptions = state.owners.map(owner => ({ value: String(owner.id), label: `${owner.display_name} · ${owner.role_name}` }));
   const result = await openDialog({
     title: "新建知识",
     description: "先保存为草稿，确认来源和适用边界后再发布。",
@@ -339,18 +408,30 @@ async function createKnowledge() {
       { name: "risk_level", label: "风险", type: "select", value: "low", options: [{ value: "low", label: "低" }, { value: "medium", label: "中" }, { value: "high", label: "高风险" }] },
       { name: "scope", label: "可见范围", type: "select", value: "organization", options: [{ value: "organization", label: "全公司" }, { value: "team", label: "指定团队" }, { value: "private", label: "仅自己" }] },
       { name: "team_id", label: "团队（选择团队可见时使用）", type: "select", options: state.teams.map(team => ({ value: String(team.id), label: team.name })) },
+      ...(ownerOptions.length ? [{ name: "owner_id", label: "知识负责人", type: "select", value: String(state.user.id), options: ownerOptions }] : []),
+      { name: "valid_until", label: "有效期（可选）", inputType: "date" },
       { name: "source_ref", label: "来源依据", placeholder: "文件、邮件或负责人确认记录" },
     ],
     submitText: "保存草稿",
   });
   if (!result) return;
   result.team_id = result.scope === "team" ? Number(result.team_id) : null;
+  result.owner_id = result.owner_id ? Number(result.owner_id) : null;
+  result.valid_until = result.valid_until || null;
   try {
-    await api("/api/knowledge", {
+    const created = await api("/api/knowledge", {
       method: "POST",
-      body: JSON.stringify({ ...result, valid_until: null, metadata: {} }),
+      body: JSON.stringify({ ...result, metadata: {} }),
     });
     showToast("知识草稿已保存");
+    if (created.potential_conflicts?.length) {
+      await openDialog({
+        title: "发现相似知识",
+        description: created.potential_conflicts.map(item => `#${item.id} ${item.title}`).join("\n"),
+        fields: [],
+        submitText: "我知道了",
+      });
+    }
     await loadKnowledge();
   } catch (error) {
     showToast(error.message, true);
@@ -643,6 +724,64 @@ async function ensureTeams() {
   }
 }
 
+async function ensureOwners() {
+  if (state.owners.length) return;
+  try {
+    const data = await api("/api/knowledge/owners");
+    state.owners = data.items || [];
+  } catch (_) {
+    state.owners = [];
+  }
+}
+
+async function loadTraining() {
+  try {
+    const [quiz, readiness] = await Promise.all([
+      api("/api/training/quiz"),
+      api("/api/training/readiness"),
+    ]);
+    $("#training-score").textContent = readiness.average_score;
+    $("#training-list").innerHTML = quiz.items.map((item, index) => `
+      <article class="training-card">
+        <div class="panel-head"><strong>${esc(item.question)}</strong><span class="pill">${item.risk_level === "high" ? "高风险" : "练习"}</span></div>
+        <textarea id="training-response-${index}" placeholder="写下你会怎样回复客户"></textarea>
+        <div class="button-row" style="justify-content:flex-end;">
+          <button class="button primary training-submit" data-index="${index}" data-id="${item.id}">提交答案</button>
+        </div>
+        <div id="training-result-${index}"></div>
+      </article>
+    `).join("") || '<p class="muted">还需要先发布标准问答，系统才能生成训练题。</p>';
+    $$(".training-submit").forEach(button => button.addEventListener("click", () => submitTraining(Number(button.dataset.index), Number(button.dataset.id))));
+  } catch (error) {
+    showToast(error.message, true);
+  }
+}
+
+async function submitTraining(index, knowledgeId) {
+  const response = $(`#training-response-${index}`).value.trim();
+  if (!response) {
+    showToast("请先写下你的回复", true);
+    return;
+  }
+  try {
+    const result = await api("/api/training/attempts", {
+      method: "POST",
+      body: JSON.stringify({ knowledge_id: knowledgeId, response }),
+    });
+    const feedback = result.feedback;
+    $(`#training-result-${index}`).innerHTML = `
+      <div class="training-result">
+        <strong>${result.score} 分 · ${feedback.passed ? "达到参考标准" : "需要继续练习"}</strong>
+        <p>参考答复：${esc(feedback.reference_answer)}</p>
+        <p>缺少要点：${esc((feedback.missing || []).join("、") || "未发现明显遗漏")}</p>
+      </div>`;
+    const readiness = await api("/api/training/readiness");
+    $("#training-score").textContent = readiness.average_score;
+  } catch (error) {
+    showToast(error.message, true);
+  }
+}
+
 async function changePassword() {
   const result = await openDialog({
     title: "修改密码",
@@ -810,9 +949,15 @@ $("#knowledge-kind").addEventListener("change", loadKnowledge);
 $("#knowledge-search").addEventListener("keydown", event => { if (event.key === "Enter") loadKnowledge(); });
 $("#new-knowledge-button").addEventListener("click", createKnowledge);
 $("#import-knowledge-button").addEventListener("click", importKnowledge);
+$("#file-import-button").addEventListener("click", () => $("#import-file-input").click());
+$("#import-file-input").addEventListener("change", event => {
+  const file = event.target.files?.[0];
+  if (file) uploadImport(file);
+});
 $("#gap-status").addEventListener("change", loadGaps);
 $("#new-account-button").addEventListener("click", createAccount);
 $("#new-team-button").addEventListener("click", createTeam);
+$("#reload-quiz-button").addEventListener("click", loadTraining);
 $("#new-role-button").addEventListener("click", createRole);
 
 boot();

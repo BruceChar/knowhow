@@ -19,10 +19,13 @@ def test_expected_v2_routes_are_registered():
         "/api/ask",
         "/api/dashboard",
         "/api/knowledge",
+        "/api/imports",
+        "/api/imports/preview",
         "/api/gaps",
         "/api/team",
         "/api/teams",
         "/api/roles",
+        "/api/training/quiz",
     ):
         assert path in paths
 

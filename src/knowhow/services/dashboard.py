@@ -30,9 +30,11 @@ def dashboard(organization_id: int) -> dict:
               (SELECT count(*) FROM knowledge_unit
                WHERE organization_id=%s AND status='published'
                  AND valid_until IS NOT NULL
-                 AND valid_until <= CURRENT_DATE+14) AS expiring
+                 AND valid_until <= CURRENT_DATE+14) AS expiring,
+              (SELECT COALESCE(round(avg(score)),0) FROM training_attempt
+               WHERE organization_id=%s) AS training_score
             """,
-            (organization_id,) * 8,
+            (organization_id,) * 9,
         )
         metrics = cur.fetchone()
         cur.execute(
@@ -79,6 +81,11 @@ def dashboard(organization_id: int) -> dict:
             "key": "feedback",
             "label": "标记至少 1 次客户回复已发送",
             "done": metrics["sent_30d"] >= 1,
+        },
+        {
+            "key": "training",
+            "label": "新人训练平均分达到 60",
+            "done": metrics["training_score"] >= 60,
         },
     ]
     readiness = round(

@@ -212,6 +212,10 @@ textarea { min-height: 110px; resize: vertical; }
 .filters select { width: auto; }
 .knowledge-list, .gap-list, .team-list { display: grid; gap: 9px; }
 .role-list { display: grid; gap: 9px; margin-top: 14px; }
+.training-list { display: grid; gap: 12px; }
+.training-card { padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: white; }
+.training-card textarea { margin-top: 10px; }
+.training-result { margin-top: 10px; padding: 10px; border-radius: 8px; background: var(--green-soft); color: var(--green); font-size: 12px; }
 .knowledge-item, .team-item { padding: 14px; }
 .knowledge-item { display: grid; grid-template-columns: 110px minmax(0,1fr) auto; gap: 14px; align-items: start; }
 .knowledge-item h4 { margin: 0 0 5px; font-size: 14px; }
@@ -235,6 +239,7 @@ textarea { min-height: 110px; resize: vertical; }
 .modal-root { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 20px; background: rgba(15,28,22,.55); }
 .dialog-card { width: min(680px,100%); max-height: 88vh; overflow: auto; padding: 24px; border-radius: 18px; background: var(--card); box-shadow: var(--shadow); }
 .dialog-card h2 { font-size: 25px; }
+.dialog-card .muted { white-space: pre-wrap; }
 .dialog-form { display: grid; gap: 12px; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
 .dialog-error { display: none; color: var(--red); font-size: 12px; }
